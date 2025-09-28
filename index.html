@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Cesium + Supercluster (Worker)</title>
+    <style>
+        html, body, #app, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; }
+        #hud {
+            position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.6);
+            color: #fff; padding: 8px 10px; font: 13px/1.3 system-ui, sans-serif; border-radius: 8px;
+        }
+        #hud code { color: #a0e7ff; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div id="cesiumContainer"></div>
+    <div id="hud">
+        <div>Clusters: <code id="hudClusters">0</code></div>
+        <div>Points (visible, unclustered): <code id="hudSingles">0</code></div>
+        <div>Click a bubble to list its members (first 20 shown in console)</div>
+    </div>
+</div>
+<script type="module" src="src/main.ts"></script>
+</body>
+</html>
