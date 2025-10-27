@@ -42,4 +42,14 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         postMessage(res);
         return;
     }
+
+    if (msg.type === "tile") {
+        const { z, x, y } = msg;
+        const tile = index.getTile(z, x, y);
+        const extent = 4096;
+        const features = tile?.features ?? [];
+        const res: WorkerResponse = { type: "tile", z, x, y, extent, features };
+        postMessage(res);
+        return;
+    }
 };

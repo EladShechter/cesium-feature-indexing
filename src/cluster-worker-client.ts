@@ -1,13 +1,16 @@
 import type { BBox, WorkerRequest, WorkerResponse } from "./global";
+import Supercluster from 'supercluster';
 
 export type ClustersFeature = GeoJSON.Feature<GeoJSON.Point, any>;
 export type LeafFeature = GeoJSON.Feature<GeoJSON.Point>;
+export type TileResponse = { type: "tile"; z: number; x: number; y: number; extent: number; features: Supercluster.TileFeature<any, any>[] };
 
 export class ClusterWorkerClient {
     private worker: Worker;
     private builtHandlers: Array<() => void> = [];
     private clusterHandlers: Array<(features: ClustersFeature[]) => void> = [];
     private leafHandlers: Array<(features: LeafFeature[]) => void> = [];
+    private tileHandlers: Array<(tile: TileResponse) => void> = [];
     private indexBuilt = false;
 
     constructor(worker: Worker) {
@@ -29,6 +32,11 @@ export class ClusterWorkerClient {
                 this.leafHandlers.forEach((h) => h(features));
                 return;
             }
+            if ((data as any).type === "tile") {
+                const tile = data as unknown as TileResponse;
+                this.tileHandlers.forEach((h) => h(tile));
+                return;
+            }
         };
     }
 
@@ -45,6 +53,10 @@ export class ClusterWorkerClient {
         this.leafHandlers.push(handler);
     }
 
+    addTileListener(handler: (tile: TileResponse) => void) {
+        this.tileHandlers.push(handler);
+    }
+
     removeBuiltListener(handler: () => void) {
         this.builtHandlers = this.builtHandlers.filter(h => h !== handler);
     }
@@ -55,6 +67,10 @@ export class ClusterWorkerClient {
 
     removeLeavesListener(handler: (features: LeafFeature[]) => void) {
         this.leafHandlers = this.leafHandlers.filter(h => h !== handler);
+    }
+
+    removeTileListener(handler: (tile: TileResponse) => void) {
+        this.tileHandlers = this.tileHandlers.filter(h => h !== handler);
     }
 
     // posting methods
@@ -73,7 +89,13 @@ export class ClusterWorkerClient {
         this.worker.postMessage(msg);
     }
 
+    tile(z: number, x: number, y: number) {
+        const msg: WorkerRequest = { type: "tile", z, x, y } as any;
+        this.worker.postMessage(msg);
+    }
+
     isIndexBuilt(): boolean {
         return this.indexBuilt;
     }
 }
+

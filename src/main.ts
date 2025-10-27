@@ -1,7 +1,7 @@
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { Viewer, BillboardCollection, PointPrimitiveCollection, Rectangle } from "cesium";
 import { buildRandomFeatures, buildFeatureIndex } from "./data";
-import { createRenderer } from "./rendering";
+import { Renderer } from "./rendering";
 import { setupPicking } from "./picking";
 import type { BBox } from "./global";
 import { ClusterWorkerClient } from "./cluster-worker-client";
@@ -52,8 +52,8 @@ const worker = new Worker(new URL("./cluster-worker.ts", import.meta.url), { typ
 const client = new ClusterWorkerClient(worker);
 
 
-// Create renderer using extracted module
-const { renderClustersForView, drawClustersAndSingles, setRenderingOnCameraChange } = createRenderer({
+// Create renderer class instance
+const renderer = new Renderer({
     viewer,
     client,
     billboardCollection,
@@ -63,17 +63,23 @@ const { renderClustersForView, drawClustersAndSingles, setRenderingOnCameraChang
 });
 
 client.addBuiltListener(() => {
-    renderClustersForView();
+    // renderer.renderClustersForView();
+    renderer.renderTilesForView();
 });
 
 client.addClustersListener((features) => {
-    drawClustersAndSingles(features);
+    renderer.drawClustersAndSingles(features);
+});
+
+// Hook tile results (invoked if/when renderer.renderTilesForView() is used)
+client.addTileListener((tile) => {
+    renderer.drawTile(tile);
 });
 
 // Build the index off-thread
 client.build(features, { minPoints: 2, radius: 40, maxZoom: 18 });
 
-setRenderingOnCameraChange(viewer, client);
+renderer.setRenderingOnCameraChange();
 
 // Setup drill picking via extracted module
 setupPicking(viewer, client, features);
