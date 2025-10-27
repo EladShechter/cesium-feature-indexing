@@ -4,8 +4,8 @@ import {
     PointPrimitiveCollection,
     VerticalOrigin,
     Viewer,
+    Color
 } from "cesium";
-import { CameraHandler } from "./camera-handler";
 import { colorForCount, formatCount, makeClusterSprite, sizeForCount } from "./sprite-cache";
 import type { BBox } from "./global";
 import { ClusterWorkerClient } from "./cluster-worker-client";
@@ -38,10 +38,6 @@ export class Renderer {
     }
 
     // ————————————————————————————————————————————————————————————————————————
-    // Utilities
-    // ————————————————————————————————————————————————————————————————————————
-
-    // ————————————————————————————————————————————————————————————————————————
     // Cluster flow (getClusters)
     // ————————————————————————————————————————————————————————————————————————
     renderClustersForView(bbox: BBox, zoom: number) {
@@ -52,46 +48,24 @@ export class Renderer {
         this.billboardCollection.removeAll();
         this.pointCollection.removeAll();
 
-        let clusters = 0,
-            singles = 0;
+        let clusters = 0, singles = 0;
 
         for (const f of features) {
             const [lon, lat] = f.geometry.coordinates as [number, number];
             const pos = Cartesian3.fromDegrees(lon, lat);
             const props = f.properties || {};
-
-            if (props.cluster) {
+            const isCluster = !!props.cluster;
+            
+            this.drawFeature(pos, props, (f as any).id, isCluster);
+            
+            if (isCluster) {
                 clusters++;
-                const count: number = props.point_count;
-                const size = sizeForCount(count);
-                const color = colorForCount(count);
-                const text = formatCount(count);
-                const sprite = makeClusterSprite(size, color, text);
-
-                const billboard = this.billboardCollection.add({
-                    position: pos,
-                    image: sprite,
-                    verticalOrigin: VerticalOrigin.CENTER,
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                });
-
-                billboard.id = { kind: "cluster", cluster_id: props.cluster_id, count };
             } else {
                 singles++;
-                const id: string = String((f as any).id);
-                const point = this.pointCollection.add({
-                    position: pos,
-                    pixelSize: 6,
-                    color: (window as any).Cesium?.Color?.SKYBLUE ?? undefined,
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                });
-                point.id = { kind: "point", id };
             }
         }
 
-        this.hudClusters.textContent = String(clusters);
-        this.hudSingles.textContent = String(singles);
-
+        this.updateHUD(clusters, singles);
         this.viewer.scene.requestRender();
     }
 
@@ -123,35 +97,18 @@ export class Renderer {
             const lon = worldX * 360 - 180;
             const lat = (Math.atan(Math.sinh(Math.PI * (1 - 2 * worldY))) * 180) / Math.PI;
             const pos = Cartesian3.fromDegrees(lon, lat);
-
-            if (tags.cluster) {
+            const isCluster = !!tags.cluster;
+            
+            this.drawFeature(pos, tags, tags?.id ?? "", isCluster);
+            
+            if (isCluster) {
                 clusters++;
-                const count: number = tags.point_count;
-                const size = sizeForCount(count);
-                const color = colorForCount(count);
-                const text = formatCount(count);
-                const sprite = makeClusterSprite(size, color, text);
-                const billboard = this.billboardCollection.add({
-                    position: pos,
-                    image: sprite,
-                    verticalOrigin: VerticalOrigin.CENTER,
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                });
-                billboard.id = { kind: "cluster", cluster_id: tags.cluster_id, count };
             } else {
                 singles++;
-                const id: string = String(tags?.id ?? "");
-                const point = this.pointCollection.add({
-                    position: pos,
-                    pixelSize: 6,
-                    color: (window as any).Cesium?.Color?.SKYBLUE ?? undefined,
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                });
-                point.id = { kind: "point", id };
             }
         }
-
-        // Optional HUD update accumulative; kept simple here
+        
+        this.updateHUD(clusters, singles);
         // Consumers can clear and reset HUD counters around tile draws if needed
         this.viewer.scene.requestRender();
     }
@@ -187,5 +144,44 @@ export class Renderer {
             }
         }
         return tiles;
+    }
+
+    private drawFeature(pos: Cartesian3, props: { point_count: number, cluster_id: string }, id: string | number, isCluster: boolean): void {
+        if (isCluster) {
+            const count: number = props.point_count;
+            const size = sizeForCount(count);
+            const color = colorForCount(count);
+            const text = formatCount(count);
+            const sprite = makeClusterSprite(size, color, text);
+
+            const billboard = this.billboardCollection.add({
+                position: pos,
+                image: sprite,
+                verticalOrigin: VerticalOrigin.CENTER,
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            });
+
+            billboard.id = {
+                kind: "cluster",
+                cluster_id: props.cluster_id,
+                count
+            };
+        } else {
+            const point = this.pointCollection.add({
+                position: pos,
+                pixelSize: 6,
+                color: Color.SKYBLUE,
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            });
+            point.id = {
+                kind: "point",
+                id: String(id)
+            };
+        }
+    }
+
+    private updateHUD(clusters: number, singles: number) {
+        this.hudClusters.textContent = String(clusters);
+        this.hudSingles.textContent = String(singles);
     }
 }
