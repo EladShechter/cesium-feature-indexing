@@ -20,7 +20,7 @@ export function setupPicking(
       const meta: any = (p as any).id;
       if (!meta) continue;
       if (meta.kind === "point" && meta.id) singleIds.push(meta.id);
-      if (meta.kind === "cluster" && typeof meta.cluster_id === "number") clusterIds.push(meta.cluster_id);
+      if (meta.kind === "cluster" && typeof meta.id === "number") clusterIds.push(meta.cluster_id);
     }
 
     if (singleIds.length) {

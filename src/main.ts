@@ -1,7 +1,7 @@
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { Viewer, BillboardCollection, PointPrimitiveCollection, Rectangle } from "cesium";
 import { buildRandomFeatures, buildFeatureIndex } from "./data";
-import { Renderer } from "./rendering";
+import { IRenderer, TileRenderer } from "./rendering";
 import { setupPicking } from "./picking";
 import type { BBox } from "./global";
 import { ClusterWorkerClient } from "./cluster-worker-client";
@@ -39,8 +39,7 @@ const hudSingles = document.getElementById("hudSingles")!;
 // ————————————————————————————————————————————————————————————————————————
 const N = 100_000;
 const bbox: BBox = [34.25, 29.45, 35.90, 33.35]; // avoid the poles a bit for nicer view
-const rect = Rectangle.fromDegrees(bbox[0], bbox[1], bbox[2], bbox[3]);
-viewer.camera.flyTo({ destination: rect, duration: 1.5 });
+await flyToBbox(bbox);
 
 // Build features
 const features = buildRandomFeatures(N, bbox);
@@ -55,25 +54,36 @@ const cameraHandler = new CameraHandler(viewer);
 
 
 // Create renderer class instance
-const renderer = new Renderer({
+const renderer: IRenderer = new TileRenderer(
     viewer,
     client,
     billboardCollection,
     pointCollection,
     hudClusters,
     hudSingles,
-});
+);
+renderer.registerRenderingResult();
 
 client.addBuiltListener(() => {
-    cameraHandler.renderForFirstTime((bbox, zoom) => renderer.renderTilesForView(bbox, zoom));
+    cameraHandler.renderForFirstTime((bbox, zoom) => renderer.requestRenderByBboxAndZoom(bbox, zoom));
 });
 
 // Build the index off-thread
 client.build(features, { minPoints: 2, radius: 40, maxZoom: 18 });
 
-cameraHandler.setRenderingOnCameraChange((bbox, zoom) => renderer.renderTilesForView(bbox, zoom));
+cameraHandler.setRenderingOnCameraChange((bbox, zoom) => renderer.requestRenderByBboxAndZoom(bbox, zoom));
 
 // Setup drill picking via extracted module
 setupPicking(viewer, client, features);
 
-// Initial render once index is built (handled in onmessage)
+async function flyToBbox(bbox: BBox): Promise<void> {
+    const rect = Rectangle.fromDegrees(bbox[0], bbox[1], bbox[2], bbox[3]);
+    
+    return new Promise((resolve) => {
+        viewer.camera.flyTo({
+            destination: rect,
+            duration: 1.5,
+            complete: () => resolve()
+        });
+    });
+}
