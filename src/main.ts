@@ -68,15 +68,6 @@ client.addBuiltListener(() => {
     cameraHandler.renderForFirstTime((bbox, zoom) => renderer.renderTilesForView(bbox, zoom));
 });
 
-client.addClustersListener((features) => {
-    renderer.drawClustersAndSingles(features);
-});
-
-// Hook tile results (invoked if/when renderer.renderTilesForView() is used)
-client.addTileListener((tile) => {
-    renderer.drawTile(tile);
-});
-
 // Build the index off-thread
 client.build(features, { minPoints: 2, radius: 40, maxZoom: 18 });
 
