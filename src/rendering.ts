@@ -1,13 +1,11 @@
 import {
     BillboardCollection,
     Cartesian3,
-    Cartographic,
-    Math as CMath,
     PointPrimitiveCollection,
     VerticalOrigin,
     Viewer,
-    WebMercatorProjection,
 } from "cesium";
+import { CameraHandler } from "./camera-handler";
 import { colorForCount, formatCount, makeClusterSprite, sizeForCount } from "./sprite-cache";
 import type { BBox } from "./global";
 import { ClusterWorkerClient } from "./cluster-worker-client";
@@ -21,11 +19,6 @@ export class Renderer {
     private hudClusters: HTMLElement;
     private hudSingles: HTMLElement;
 
-    private merc = new WebMercatorProjection();
-    private readonly R = 6378137;
-    private readonly WORLD_METERS = 2 * Math.PI * this.R;
-    private lastBBox?: BBox;
-    private lastZoom?: number;
     private renderedTileKeys: Set<string> = new Set();
 
     constructor(params: {
@@ -47,44 +40,11 @@ export class Renderer {
     // ————————————————————————————————————————————————————————————————————————
     // Utilities
     // ————————————————————————————————————————————————————————————————————————
-    private getViewBBoxAndZoomAndShouldRender(): { bbox: BBox; zoom: number, shouldRender: boolean } {
-        const { bbox, zoom } = this.viewBBoxAndZoom();
-        if (this.lastZoom === zoom && this.sameBBox(this.lastBBox, bbox)) {
-            return {bbox, zoom, shouldRender: false };
-        }
-        this.lastZoom = zoom;
-        this.lastBBox = bbox.slice() as BBox;
-
-        return { bbox, zoom, shouldRender: true }
-    }
-
-    private viewBBoxAndZoom(): { bbox: BBox; zoom: number } {
-        const rect = this.viewer.camera.computeViewRectangle(this.viewer.scene.globe.ellipsoid);
-        if (!rect) return { bbox: [-180, -85, 180, 85] as any, zoom: 2 };
-
-        const west = CMath.toDegrees(rect.west);
-        const south = CMath.toDegrees(rect.south);
-        const east = CMath.toDegrees(rect.east);
-        const north = CMath.toDegrees(rect.north);
-
-        const xW = this.merc.project(Cartographic.fromDegrees(west, 0)).x;
-        const xE = this.merc.project(Cartographic.fromDegrees(east, 0)).x;
-        let width = Math.abs(xE - xW);
-        if (!isFinite(width) || width <= 0) width = this.WORLD_METERS;
-        let zoom = Math.round(Math.log2(this.WORLD_METERS / width));
-        zoom = Math.max(0, Math.min(18, zoom));
-
-        return { bbox: [west, south, east, north] as any, zoom };
-    }
 
     // ————————————————————————————————————————————————————————————————————————
     // Cluster flow (getClusters)
     // ————————————————————————————————————————————————————————————————————————
-    renderClustersForView() {
-        const { bbox, zoom, shouldRender } = this.getViewBBoxAndZoomAndShouldRender();
-        if (!shouldRender) {
-            return; // guard: no change
-        }
+    renderClustersForView(bbox: BBox, zoom: number) {
         this.client.clusters(bbox, zoom);
     }
 
@@ -135,41 +95,16 @@ export class Renderer {
         this.viewer.scene.requestRender();
     }
 
-    setRenderingOnCameraChange() {
-        let lastRefresh = 0;
-        const THROTTLE_MS = 100;
-
-        this.viewer.camera.changed.addEventListener(() => {
-            if (!this.client.isIndexBuilt()) return;
-            const now = performance.now();
-            if (now - lastRefresh >= THROTTLE_MS) {
-                lastRefresh = now;
-                this.renderClustersForView();
-            }
-        });
-
-        let renderTimeout: number;
-        this.viewer.camera.moveEnd.addEventListener(() => {
-            if (renderTimeout) clearTimeout(renderTimeout);
-            renderTimeout = setTimeout(() => this.renderClustersForView(), THROTTLE_MS);
-        });
-    }
-
     // ————————————————————————————————————————————————————————————————————————
     // Tile flow (getTile) — for performance comparison
     // ————————————————————————————————————————————————————————————————————————
-    renderTilesForView() {
-        const { bbox, zoom, shouldRender } = this.getViewBBoxAndZoomAndShouldRender();
-        if (!shouldRender) {
-            return; // guard: no change
-        }
-        const z = zoom;
-        const tiles = this.computeCoveringTiles(bbox, z);
+    renderTilesForView(bbox: BBox, zoom: number) {
+        const tiles = this.computeCoveringTiles(bbox, zoom);
         for (const t of tiles) {
-            const key = `${z}/${t.x}/${t.y}`;
+            const key = `${zoom}/${t.x}/${t.y}`;
             if (this.renderedTileKeys.has(key)) continue; // guard: already rendered/requested
             this.renderedTileKeys.add(key);
-            this.client.tile(z, t.x, t.y);
+            this.client.tile(zoom, t.x, t.y);
         }
     }
 
@@ -252,15 +187,5 @@ export class Renderer {
             }
         }
         return tiles;
-    }
-
-    private sameBBox(a?: BBox, b?: BBox, eps = 1e-7): boolean {
-        if (!a || !b) return false;
-        return (
-            Math.abs(a[0] - b[0]) < eps &&
-            Math.abs(a[1] - b[1]) < eps &&
-            Math.abs(a[2] - b[2]) < eps &&
-            Math.abs(a[3] - b[3]) < eps
-        );
     }
 }

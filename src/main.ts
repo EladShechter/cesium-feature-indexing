@@ -5,6 +5,7 @@ import { Renderer } from "./rendering";
 import { setupPicking } from "./picking";
 import type { BBox } from "./global";
 import { ClusterWorkerClient } from "./cluster-worker-client";
+import { CameraHandler } from './camera-handler';
 
 declare const CESIUM_BASE_URL: string;
 (window as any).CESIUM_BASE_URL = CESIUM_BASE_URL;
@@ -50,6 +51,7 @@ const features = buildRandomFeatures(N, bbox);
 // ————————————————————————————————————————————————————————————————————————
 const worker = new Worker(new URL("./cluster-worker.ts", import.meta.url), { type: "module" });
 const client = new ClusterWorkerClient(worker);
+const cameraHandler = new CameraHandler(viewer);
 
 
 // Create renderer class instance
@@ -63,8 +65,7 @@ const renderer = new Renderer({
 });
 
 client.addBuiltListener(() => {
-    // renderer.renderClustersForView();
-    renderer.renderTilesForView();
+    cameraHandler.renderForFirstTime((bbox, zoom) => renderer.renderTilesForView(bbox, zoom));
 });
 
 client.addClustersListener((features) => {
@@ -79,7 +80,7 @@ client.addTileListener((tile) => {
 // Build the index off-thread
 client.build(features, { minPoints: 2, radius: 40, maxZoom: 18 });
 
-renderer.setRenderingOnCameraChange();
+cameraHandler.setRenderingOnCameraChange((bbox, zoom) => renderer.renderTilesForView(bbox, zoom));
 
 // Setup drill picking via extracted module
 setupPicking(viewer, client, features);
