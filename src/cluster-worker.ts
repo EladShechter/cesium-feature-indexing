@@ -6,7 +6,7 @@ import type { BBox, WorkerRequest, WorkerResponse } from "./global";
 type Feature = GeoJSON.Feature<GeoJSON.Point>;
 
 let index: Supercluster<any, any> | null = null;
-
+const EXTENT = 4096;
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
     const msg = e.data;
 
@@ -14,7 +14,9 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         index = new Supercluster({
             minPoints: 2,
             radius: 40,   // pixels
-            maxZoom: 18,  // web mercator zooms
+            maxZoom: 18,
+            extent: EXTENT,
+            // web mercator zooms
             ...(msg.options || {})
         });
         index.load(msg.points);
@@ -46,7 +48,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
     if (msg.type === "tile") {
         const { z, x, y } = msg;
         const tile = index.getTile(z, x, y);
-        const extent = 4096;
+        const extent = EXTENT;
         const features = tile?.features ?? [];
         const res: WorkerResponse = { type: "tile", z, x, y, extent, features };
         postMessage(res);
