@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@turf/random": "^7.1.0",
+    "@types/geojson-vt": "^3.2.5",
     "cesium": "^1.118.0",
+    "geojson-vt": "^4.0.2",
     "supercluster": "^8.0.1"
   },
   "devDependencies": {

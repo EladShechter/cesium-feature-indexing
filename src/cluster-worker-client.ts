@@ -1,9 +1,11 @@
 import type { BBox, WorkerRequest, WorkerResponse } from "./global";
+import type * as GeoJSON from 'geojson';
 import Supercluster from 'supercluster';
 
 export type ClustersFeature = GeoJSON.Feature<GeoJSON.Point, any>;
 export type LeafFeature = GeoJSON.Feature<GeoJSON.Point>;
 export type TileResponse = { type: "tile"; z: number; x: number; y: number; extent: number; features: Supercluster.TileFeature<any, any>[] };
+export type VectorTileResponse = { type: "vectorTile"; z: number; x: number; y: number; features: GeoJSON.Feature<GeoJSON.Geometry>[] };
 
 export class ClusterWorkerClient {
     private worker: Worker;
@@ -11,6 +13,7 @@ export class ClusterWorkerClient {
     private clusterHandlers: Array<(features: ClustersFeature[]) => void> = [];
     private leafHandlers: Array<(features: LeafFeature[]) => void> = [];
     private tileHandlers: Array<(tile: TileResponse) => void> = [];
+    private vectorTileHandlers: Array<(tile: VectorTileResponse) => void> = [];
     private indexBuilt = false;
 
     constructor(worker: Worker) {
@@ -32,9 +35,14 @@ export class ClusterWorkerClient {
                 this.leafHandlers.forEach((h) => h(features));
                 return;
             }
-            if ((data as any).type === "tile") {
+            if (data.type === "tile") {
                 const tile = data as unknown as TileResponse;
                 this.tileHandlers.forEach((h) => h(tile));
+                return;
+            }
+            if (data.type === "vectorTile") {
+                const tile = data as unknown as VectorTileResponse;
+                this.vectorTileHandlers.forEach((h) => h(tile));
                 return;
             }
         };
@@ -64,19 +72,34 @@ export class ClusterWorkerClient {
     removeClustersListener(handler: (features: ClustersFeature[]) => void) {
         this.clusterHandlers = this.clusterHandlers.filter(h => h !== handler);
     }
-
     removeLeavesListener(handler: (features: LeafFeature[]) => void) {
         this.leafHandlers = this.leafHandlers.filter(h => h !== handler);
     }
 
     removeTileListener(handler: (tile: TileResponse) => void) {
-        this.tileHandlers = this.tileHandlers.filter(h => h !== handler);
+        this.tileHandlers = this.tileHandlers.filter((h) => h !== handler);
+    }
+
+    // Vector tile methods
+    buildVectorTiles(features: GeoJSON.FeatureCollection<GeoJSON.Geometry>, options?: any) {
+        this.worker.postMessage({ type: "buildVectorTiles", features, options } as WorkerRequest);
+    }
+
+    getVectorTile(z: number, x: number, y: number) {
+        this.worker.postMessage({ type: "getVectorTile", z, x, y } as WorkerRequest);
+    }
+
+    addVectorTileListener(handler: (tile: VectorTileResponse) => void) {
+        this.vectorTileHandlers.push(handler);
+    }
+
+    removeVectorTileListener(handler: (tile: VectorTileResponse) => void) {
+        this.vectorTileHandlers = this.vectorTileHandlers.filter((h) => h !== handler);
     }
 
     // posting methods
     build(points: GeoJSON.Feature<GeoJSON.Point>[], options?: any) {
         const msg: WorkerRequest = { type: "build", points, options } as any;
-        this.worker.postMessage(msg);
     }
 
     clusters(bbox: BBox, zoom: number) {

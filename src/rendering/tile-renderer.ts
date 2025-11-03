@@ -12,23 +12,23 @@ type TileStatus = {
 };
 
 // Cache configuration
-const CACHE_CONFIG = {
-    // Maximum number of tiles to cache
-    MAX_TILE_CACHE_SIZE: 100,
-    // Maximum number of rendered features to cache per zoom level
-    MAX_FEATURES_CACHE_SIZE: 30,
-    // Time in ms after which a tile is considered stale
-    TILE_STALE_TIME: 5 * 60 * 1000 // 5 minutes
-};
+// const CACHE_CONFIG = {
+//     // Maximum number of tiles to cache
+//     MAX_TILE_CACHE_SIZE: 100,
+//     // Maximum number of rendered features to cache per zoom level
+//     MAX_FEATURES_CACHE_SIZE: 30,
+//     // Time in ms after which a tile is considered stale
+//     TILE_STALE_TIME: 5 * 60 * 1000 // 5 minutes
+// };
 
 export class TileRenderer extends BaseRenderer implements IRenderer {
     private tileStatuses: Map<string, TileStatus> = new Map();
     private renderedFeatures: Map<string, RenderedFeatures> = new Map();
     
-    // Tile cache: stores raw tile data
-    private tileCache: Map<string, { data: any; timestamp: number }> = new Map();
-    // Feature cache: stores rendered features by zoom level
-    private featureCache: Map<string, { features: RenderedFeatures; timestamp: number }> = new Map();
+    // // Tile cache: stores raw tile data
+    // private tileCache: Map<string, { data: any; timestamp: number }> = new Map();
+    // // Feature cache: stores rendered features by zoom level
+    // private featureCache: Map<string, { features: RenderedFeatures; timestamp: number }> = new Map();
 
     constructor(
         viewer: Viewer,
@@ -57,38 +57,38 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
             }
 
             // Check feature cache first
-            const cachedFeatures = this.getCachedFeatures(tileKey);
-            if (cachedFeatures) {
-                console.log(`Using cached features for ${tileKey}`);
-                for (const billboard of cachedFeatures.billboards) {
-                    this.billboardCollection.add(billboard);
-                }
-                for (const point of cachedFeatures.points) {
-                    this.pointCollection.add(point);
-                }
-                const tileStatus: TileStatus = { state: 'ready' };
-                this.renderedFeatures.set(tileKey, cachedFeatures);
-                this.updateTileRendering(tileKey, tileStatus);
-                continue;
-            }
+            // const cachedFeatures = this.getCachedFeatures(tileKey);
+            // if (cachedFeatures) {
+            //     console.log(`Using cached features for ${tileKey}`);
+            //     const features: RenderedFeatures = { billboards: [], points: [] }
+            //     for (const billboard of cachedFeatures.billboards) {
+            //         features.billboards.push(this.billboardCollection.add(billboard));
+            //     }
+            //     for (const point of cachedFeatures.points) {
+            //         features.points.push(this.pointCollection.add(point));
+            //     }
+            //
+            //     this.renderedFeatures.set(tileKey, cachedFeatures);
+            //     this.updateTileRendered(tileKey);
+            //     continue;
+            // }
 
             // Check tile cache
-            const cachedTile = this.tileCache.get(tileKey);
-            if (cachedTile && (Date.now() - cachedTile.timestamp) < CACHE_CONFIG.TILE_STALE_TIME) {
-                console.log(`Using cached tile data for ${tileKey}`);
-                this.tileStatuses.set(tileKey, { state: 'pending' });
-                // Process the cached tile data immediately
-                this.processTileFeatures(
-                    tileKey,
-                    cachedTile.data.features,
-                    { state: 'ready' },
-                    zoom,
-                    t.x,
-                    t.y,
-                    cachedTile.data.extent
-                );
-                continue;
-            }
+            // const cachedTile = this.tileCache.get(tileKey);
+            // if (cachedTile && (Date.now() - cachedTile.timestamp) < CACHE_CONFIG.TILE_STALE_TIME) {
+            //     console.log(`Using cached tile data for ${tileKey}`);
+            //     this.tileStatuses.set(tileKey, { state: 'pending' });
+            //     // Process the cached tile data immediately
+            //     this.processTileFeatures(
+            //         tileKey,
+            //         cachedTile.data.features,
+            //         zoom,
+            //         t.x,
+            //         t.y,
+            //         cachedTile.data.extent
+            //     );
+            //     continue;
+            // }
 
             // If not in any cache, request from web worker
             this.tileStatuses.set(tileKey, { state: 'pending' });
@@ -117,8 +117,18 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
                 this.removeTile(tileKey);
             } else if (status.state === 'pending') {
                 // Schedule removal when rendering completes
+                const originalOnComplete = status.onComplete;
                 status.state = 'removed';
-                status.onComplete = () => this.removeTile(tileKey);
+                status.onComplete = () => {
+                    this.removeTile(tileKey);
+                    originalOnComplete?.();
+                };
+            }
+        }
+
+        for (const key of this.renderedFeatures.keys()) {
+            if (!this.tileStatuses.has(key) && !currentTileKeys.has(key)) {
+                this.removeTile(key);
             }
         }
     }
@@ -148,31 +158,34 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
             return;
         }
 
-        // Cache the tile data
-        this.tileCache.set(tileKey, {
-            data: { z, x: xTile, y: yTile, extent, features },
-            timestamp: Date.now()
-        });
-        this.cleanupTileCache();
+        // // Cache the tile data
+        // this.tileCache.set(tileKey, {
+        //     data: { z, x: xTile, y: yTile, extent, features },
+        //     timestamp: Date.now()
+        // });
+        // this.cleanupTileCache();
 
         // Process the features
-        this.processTileFeatures(tileKey, features, tileStatus, z, xTile, yTile, extent);
+        this.processTileFeatures(tileKey, features, z, xTile, yTile, extent);
     }
 
-    private updateTileRendering(tileKey: string, tileStatus: TileStatus): void {
-        this.tileStatuses.set(tileKey, tileStatus);
-        // If there's a pending cleanup, execute it now
-        if (tileStatus.onComplete) {
-            tileStatus.onComplete();
+    private updateTileRendered(tileKey: string): void {
+        const tileStatus = this.tileStatuses.get(tileKey);
+        if (tileStatus) {
+            tileStatus.state = 'ready';
+            // If there's a pending cleanup, execute it now
+            if (tileStatus.onComplete) {
+                tileStatus.onComplete();
+            }
         }
+
         this.updateHUD();
         this.viewer.scene.requestRender();
     }
 
     private processTileFeatures(
         tileKey: string, 
-        features: Supercluster.TileFeature<any, any>[], 
-        tileStatus: TileStatus,
+        features: Supercluster.TileFeature<any, any>[],
         z: number,
         xTile: number,
         yTile: number,
@@ -200,62 +213,62 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         if (renderedFeatures.billboards.length > 0 || renderedFeatures.points.length > 0) {
             this.renderedFeatures.set(tileKey, renderedFeatures);
             // Cache the rendered features for this zoom level
-            this.cacheFeatures(tileKey, renderedFeatures);
-            this.updateTileRendering(tileKey, tileStatus);
+            // this.cacheFeatures(tileKey, renderedFeatures);
+            this.updateTileRendered(tileKey);
         } else {
             this.tileStatuses.delete(tileKey);
         }
     }
 
 
-    private getCachedFeatures(tileKey: string): RenderedFeatures | null {
-        const cached = this.featureCache.get(tileKey);
-        if (!cached) return null;
-
-        // Update the timestamp to mark as recently used
-        cached.timestamp = Date.now();
-        return cached.features;
-    }
-
-    private cacheFeatures(tileKey: string, features: RenderedFeatures): void {
-        this.featureCache.set(tileKey, {
-            features,
-            timestamp: Date.now()
-        });
-
-        this.cleanupFeatureCache();
-    }
-
-    private cleanupFeatureCache() {
-        // Clean up if we exceed the cache size
-        if (this.featureCache.size > CACHE_CONFIG.MAX_FEATURES_CACHE_SIZE) {
-            // Convert to array, sort by timestamp (oldest first), and remove the oldest entries
-            const entries = Array.from(this.featureCache.entries())
-                .sort((a, b) => a[1].timestamp - b[1].timestamp);
-
-            // Remove oldest entries until we're under the limit
-            while (this.featureCache.size > CACHE_CONFIG.MAX_FEATURES_CACHE_SIZE * 0.9) {
-                const [key] = entries.shift()!;
-                this.featureCache.delete(key);
-            }
-        }
-    }
-
-    private cleanupTileCache(): void {
-        if (this.tileCache.size <= CACHE_CONFIG.MAX_TILE_CACHE_SIZE) {
-            return;
-        }
-
-        // Convert to array and sort by timestamp (oldest first)
-        const entries = Array.from(this.tileCache.entries())
-            .sort((a, b) => a[1].timestamp - b[1].timestamp);
-
-        // Remove oldest entries until we're under the limit
-        while (this.tileCache.size > CACHE_CONFIG.MAX_TILE_CACHE_SIZE * 0.9) { // Keep 90% of max size
-            const [key] = entries.shift()!;
-            this.tileCache.delete(key);
-        }
-    }
+    // private getCachedFeatures(tileKey: string): RenderedFeatures | null {
+    //     const cached = this.featureCache.get(tileKey);
+    //     if (!cached) return null;
+    //
+    //     // Update the timestamp to mark as recently used
+    //     cached.timestamp = Date.now();
+    //     return cached.features;
+    // }
+    //
+    // private cacheFeatures(tileKey: string, features: RenderedFeatures): void {
+    //     this.featureCache.set(tileKey, {
+    //         features,
+    //         timestamp: Date.now()
+    //     });
+    //
+    //     this.cleanupFeatureCache();
+    // }
+    //
+    // private cleanupFeatureCache() {
+    //     // Clean up if we exceed the cache size
+    //     if (this.featureCache.size > CACHE_CONFIG.MAX_FEATURES_CACHE_SIZE) {
+    //         // Convert to array, sort by timestamp (oldest first), and remove the oldest entries
+    //         const entries = Array.from(this.featureCache.entries())
+    //             .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    //
+    //         // Remove oldest entries until we're under the limit
+    //         while (this.featureCache.size > CACHE_CONFIG.MAX_FEATURES_CACHE_SIZE * 0.9) {
+    //             const [key] = entries.shift()!;
+    //             this.featureCache.delete(key);
+    //         }
+    //     }
+    // }
+    //
+    // private cleanupTileCache(): void {
+    //     if (this.tileCache.size <= CACHE_CONFIG.MAX_TILE_CACHE_SIZE) {
+    //         return;
+    //     }
+    //
+    //     // Convert to array and sort by timestamp (oldest first)
+    //     const entries = Array.from(this.tileCache.entries())
+    //         .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    //
+    //     // Remove oldest entries until we're under the limit
+    //     while (this.tileCache.size > CACHE_CONFIG.MAX_TILE_CACHE_SIZE * 0.9) { // Keep 90% of max size
+    //         const [key] = entries.shift()!;
+    //         this.tileCache.delete(key);
+    //     }
+    // }
 
 
     private getLatLonFromTileFeature(tileFeature: Supercluster.TileFeature<any, any>, zoom: number, xTile: number, yTile: number, extent: number): {lat: number, lon: number} {

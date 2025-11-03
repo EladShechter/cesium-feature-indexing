@@ -1,6 +1,11 @@
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { Viewer, BillboardCollection, PointPrimitiveCollection, Rectangle } from "cesium";
-import { buildRandomFeatures, buildFeatureIndex } from "./data";
+import {
+    buildRandomPointFeatures,
+    buildFeatureIndex,
+    buildRandomLineStringFeatures,
+    buildRandomPolygonFeatures
+} from "./data";
 import { ClusterRenderer, IRenderer, TileRenderer } from "./rendering";
 import { setupPicking } from "./picking";
 import type { BBox } from "./global";
@@ -45,8 +50,8 @@ await flyToBbox(bbox);
 const maxZoom = 18;
 
 // Build features
-const features = buildRandomFeatures(N, bbox);
-
+const features = buildRandomPointFeatures(N, bbox);
+// const features = [...buildRandomLineStringFeatures(N/2, bbox), ...buildRandomPolygonFeatures(N/2, bbox)]
 
 // ————————————————————————————————————————————————————————————————————————
 // Worker client: build index then serve cluster queries

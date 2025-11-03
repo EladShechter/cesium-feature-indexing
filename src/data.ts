@@ -1,7 +1,5 @@
-import { randomPoint } from "@turf/random";
+import { randomPoint, randomLineString, randomPolygon } from "@turf/random";
 import type { BBox } from "./global";
-
-export type Feature = GeoJSON.Feature<GeoJSON.Point>;
 
 function ensureId(): string {
     // Prefer Web Crypto if available, otherwise simple fallback
@@ -10,15 +8,29 @@ function ensureId(): string {
     return `${Date.now()}-${Math.random()}`;
 }
 
-export function buildRandomFeatures(N: number, bbox: BBox): Feature[] {
+export function buildRandomPointFeatures(N: number, bbox: BBox): GeoJSON.Feature<GeoJSON.Point>[] {
     const random = randomPoint(N, { bbox });
     random.features.forEach(feature => feature.id = ensureId());
 
     return random.features;
 }
 
-export function buildFeatureIndex(features: Feature[]): Map<string, Feature> {
-    const byId = new Map<string, Feature>();
+export function buildRandomLineStringFeatures(N: number, bbox: BBox): GeoJSON.Feature<GeoJSON.LineString>[] {
+    const random = randomLineString(N, { bbox });
+    random.features.forEach(feature => feature.id = ensureId());
+
+    return random.features;
+}
+
+export function buildRandomPolygonFeatures(N: number, bbox: BBox): GeoJSON.Feature<GeoJSON.Polygon>[] {
+    const random = randomPolygon(N, { bbox });
+    random.features.forEach(feature => feature.id = ensureId());
+
+    return random.features;
+}
+
+export function buildFeatureIndex(features: GeoJSON.Feature<GeoJSON.Geometry>[]): Map<string, GeoJSON.Feature<GeoJSON.Geometry>> {
+    const byId = new Map<string, GeoJSON.Feature<GeoJSON.Geometry>>();
     features.forEach(feature => byId.set(String(feature.id), feature))
     return byId;
 }
