@@ -8,12 +8,10 @@ export class CameraHandler {
     private readonly WORLD_METERS = 2 * Math.PI * this.R;
     private readonly merc = new WebMercatorProjection();
 
-    private viewer: Viewer;
     private lastBBox?: BBox;
     private lastZoom?: number;
 
-    constructor(viewer: Viewer) {
-        this.viewer = viewer;
+    constructor(private viewer: Viewer, private hudZoom: HTMLElement, private maxZoom: number) {
     }
 
     public setRenderingOnCameraChange(renderFunction: RenderFunction) {
@@ -46,6 +44,7 @@ export class CameraHandler {
         if (this.lastZoom === zoom && this.sameBBox(this.lastBBox, bbox)) {
             return;
         }
+        this.hudZoom.textContent = String(zoom);
         this.lastZoom = zoom;
         this.lastBBox = [...bbox] as BBox;
         renderFunction(bbox, zoom);
@@ -65,7 +64,7 @@ export class CameraHandler {
         let width = Math.abs(xE - xW);
         if (!isFinite(width) || width <= 0) width = this.WORLD_METERS;
         let zoom = Math.round(Math.log2(this.WORLD_METERS / width));
-        zoom = Math.max(0, Math.min(18, zoom));
+        zoom = Math.max(0, Math.min(this.maxZoom, zoom));
 
         return { bbox: [west, south, east, north] as BBox, zoom };
     }
