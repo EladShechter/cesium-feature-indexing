@@ -29,8 +29,6 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
     private tileCache: Map<string, { data: any; timestamp: number }> = new Map();
     // Feature cache: stores rendered features by zoom level
     private featureCache: Map<string, { features: RenderedFeatures; timestamp: number }> = new Map();
-    // Last rendered zoom level for cache management
-    private lastZoomLevel: number | null = null;
 
     constructor(
         viewer: Viewer,
@@ -50,13 +48,51 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
 
         // Create or update status for each tile
         for (const t of tiles) {
-            const key = `${zoom}/${t.x}/${t.y}`;
-            currentTileKeys.add(key);
-            
-            if (!this.tileStatuses.has(key)) {
-                this.tileStatuses.set(key, { state: 'pending' });
-                this.client.tile(zoom, t.x, t.y);
+            const tileKey = `${zoom}/${t.x}/${t.y}`;
+            currentTileKeys.add(tileKey);
+
+            // Skip if already processing or rendered
+            if (this.tileStatuses.has(tileKey)) {
+                continue;
             }
+
+            // Check feature cache first
+            const cachedFeatures = this.getCachedFeatures(tileKey);
+            if (cachedFeatures) {
+                console.log(`Using cached features for ${tileKey}`);
+                for (const billboard of cachedFeatures.billboards) {
+                    this.billboardCollection.add(billboard);
+                }
+                for (const point of cachedFeatures.points) {
+                    this.pointCollection.add(point);
+                }
+                const tileStatus: TileStatus = { state: 'ready' };
+                this.renderedFeatures.set(tileKey, cachedFeatures);
+                this.updateTileRendering(tileKey, tileStatus);
+                continue;
+            }
+
+            // Check tile cache
+            const cachedTile = this.tileCache.get(tileKey);
+            if (cachedTile && (Date.now() - cachedTile.timestamp) < CACHE_CONFIG.TILE_STALE_TIME) {
+                console.log(`Using cached tile data for ${tileKey}`);
+                this.tileStatuses.set(tileKey, { state: 'pending' });
+                // Process the cached tile data immediately
+                this.processTileFeatures(
+                    tileKey,
+                    cachedTile.data.features,
+                    { state: 'ready' },
+                    zoom,
+                    t.x,
+                    t.y,
+                    cachedTile.data.extent
+                );
+                continue;
+            }
+
+            // If not in any cache, request from web worker
+            this.tileStatuses.set(tileKey, { state: 'pending' });
+            this.client.tile(zoom, t.x, t.y);
         }
 
         this.cleanupOldTiles(currentTileKeys);
@@ -64,10 +100,7 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
 
     registerRenderingResult(): void {
         this.client.addTileListener((tile: TileResponse) => {
-            this.drawTile(tile).then(() => {
-                // Update the last zoom level after successful rendering
-                this.lastZoomLevel = tile.z;
-            });
+            this.drawTile(tile);
         });
     }
 
@@ -104,7 +137,7 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         this.tileStatuses.delete(tileKey);
     }
 
-    private async drawTile(tile: { z: number; x: number; y: number; extent: number; features: Supercluster.TileFeature<any, any>[] }): Promise<void> {
+    private drawTile(tile: { z: number; x: number; y: number; extent: number; features: Supercluster.TileFeature<any, any>[] }): void {
         const { z, x: xTile, y: yTile, extent, features } = tile;
         const tileKey = `${z}/${xTile}/${yTile}`;
         
@@ -112,25 +145,6 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         const tileStatus = this.tileStatuses.get(tileKey);
         if (!tileStatus || tileStatus.state === 'removed') {
             console.log(`Skipping rendering of removed tile: ${tileKey}`);
-            return;
-        }
-
-        // Check feature cache first
-        if (this.lastZoomLevel === z) {
-            const cachedFeatures = this.getCachedFeatures(tileKey);
-            if (cachedFeatures) {
-                this.renderedFeatures.set(tileKey, cachedFeatures);
-                this.updateTileRendering(tileKey, tileStatus);
-                return;
-            }
-        }
-
-        const cachedTile = this.tileCache.get(tileKey);
-        
-        if (cachedTile && (Date.now() - cachedTile.timestamp) < CACHE_CONFIG.TILE_STALE_TIME) {
-            // Use cached tile data
-            console.log(`Using cached tile data for ${tileKey}`);
-            this.processTileFeatures(tileKey, cachedTile.data.features, tileStatus, z, xTile, yTile, extent);
             return;
         }
 
@@ -146,7 +160,7 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
     }
 
     private updateTileRendering(tileKey: string, tileStatus: TileStatus): void {
-        tileStatus.state = 'ready';
+        this.tileStatuses.set(tileKey, tileStatus);
         // If there's a pending cleanup, execute it now
         if (tileStatus.onComplete) {
             tileStatus.onComplete();
