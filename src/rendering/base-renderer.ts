@@ -12,14 +12,20 @@ import { colorForCount, formatCount, makeClusterSprite, sizeForCount } from "../
 import Supercluster, { ClusterProperties } from 'supercluster';
 
 export abstract class BaseRenderer {
+    protected readonly hudClusters: HTMLElement;
+    protected readonly hudSingles: HTMLElement;
+    protected readonly billboardCollection: BillboardCollection;
+    protected readonly pointCollection: PointPrimitiveCollection;
+
     protected constructor(
         protected readonly viewer: Viewer,
-        protected readonly client: ClusterWorkerClient,
-        protected readonly billboardCollection: BillboardCollection,
-        protected readonly pointCollection: PointPrimitiveCollection,
-        protected readonly hudClusters: HTMLElement,
-        protected readonly hudSingles: HTMLElement
-    ) {}
+        protected readonly client: ClusterWorkerClient
+    ) {
+        this.hudClusters = document.getElementById("hudClusters")!;
+        this.hudSingles = document.getElementById("hudSingles")!;
+        this.billboardCollection = viewer.scene.primitives.add(new BillboardCollection());
+        this.pointCollection = viewer.scene.primitives.add(new PointPrimitiveCollection());
+    }
 
     protected drawFeature(pos: Cartesian3, props: Supercluster.ClusterProperties, id: string): Billboard | PointPrimitive | null {
         try {

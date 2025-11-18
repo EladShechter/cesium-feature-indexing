@@ -33,12 +33,8 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
     constructor(
         viewer: Viewer,
         client: ClusterWorkerClient,
-        billboardCollection: BillboardCollection,
-        pointCollection: PointPrimitiveCollection,
-        hudClusters: HTMLElement,
-        hudSingles: HTMLElement
     ) {
-        super(viewer, client, billboardCollection, pointCollection, hudClusters, hudSingles);
+        super(viewer, client);
     }
 
     requestRenderByBboxAndZoom(bbox: BBox, zoom: number): void {

@@ -11,6 +11,8 @@ import { setupPicking } from "./picking";
 import type { BBox } from "./global";
 import { ClusterWorkerClient } from "./cluster-worker-client";
 import { CameraHandler } from './camera-handler';
+import { VectorLayerRenderer } from './rendering/vector-layer-renderer';
+import { FeatureCollection, Geometry } from 'geojson';
 
 declare const CESIUM_BASE_URL: string;
 (window as any).CESIUM_BASE_URL = CESIUM_BASE_URL;
@@ -31,13 +33,7 @@ const viewer = new Viewer("cesiumContainer", {
 viewer.scene.requestRenderMode = true;
 viewer.scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
 
-// Collections
-const billboardCollection = viewer.scene.primitives.add(new BillboardCollection());
-const pointCollection = viewer.scene.primitives.add(new PointPrimitiveCollection());
-
 // HUD refs
-const hudClusters = document.getElementById("hudClusters")!;
-const hudSingles = document.getElementById("hudSingles")!;
 const hudZoom = document.getElementById("hudZoom")!;
 
 // ————————————————————————————————————————————————————————————————————————
@@ -50,8 +46,8 @@ await flyToBbox(bbox);
 const maxZoom = 18;
 
 // Build features
-const features = buildRandomPointFeatures(N, bbox);
-// const features = [...buildRandomLineStringFeatures(N/2, bbox), ...buildRandomPolygonFeatures(N/2, bbox)]
+// const features = buildRandomPointFeatures(N, bbox);
+const features = [...buildRandomLineStringFeatures(N/2, bbox), ...buildRandomPolygonFeatures(N/2, bbox)]
 
 // ————————————————————————————————————————————————————————————————————————
 // Worker client: build index then serve cluster queries
@@ -62,13 +58,9 @@ const cameraHandler = new CameraHandler(viewer, hudZoom, maxZoom);
 
 
 // Create renderer class instance
-const renderer: IRenderer = new TileRenderer(
+const renderer: IRenderer = new VectorLayerRenderer(
     viewer,
-    client,
-    billboardCollection,
-    pointCollection,
-    hudClusters,
-    hudSingles
+    client
 );
 renderer.registerRenderingResult();
 
@@ -77,12 +69,14 @@ client.addBuiltListener(() => {
 });
 
 // Build the index off-thread
-client.build(features, { minPoints: 2, radius: 40, maxZoom: maxZoom });
+// client.build(features, { minPoints: 2, radius: 40, maxZoom: maxZoom });
+const featureCollection: FeatureCollection = { type: 'FeatureCollection', features };
+client.buildVectorTiles(featureCollection);
 
 cameraHandler.setRenderingOnCameraChange((bbox, zoom) => renderer.requestRenderByBboxAndZoom(bbox, zoom));
 
 // Setup drill picking via extracted module
-setupPicking(viewer, client, features);
+// setupPicking(viewer, client, features);
 
 async function flyToBbox(bbox: BBox): Promise<void> {
     const rect = Rectangle.fromDegrees(bbox[0], bbox[1], bbox[2], bbox[3]);
