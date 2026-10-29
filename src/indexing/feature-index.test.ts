@@ -60,17 +60,35 @@ describe("FeatureIndex", () => {
         }
     });
 
-    it("load given missing and Multi geometries skips and counts them", () => {
+    it("load given missing, empty and Multi geometries skips and counts them", () => {
         // given
         const bad = [
             { type: "Feature", properties: {}, geometry: null },
             { type: "Feature", properties: {}, geometry: { type: "MultiPolygon", coordinates: [] } },
+            { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [] } },
+            { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[]] } },
+            { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
         ] as GeoJSON.Feature<GeoJSON.Geometry | null>[];
         const index = new FeatureIndex(OPTIONS);
         // when
         index.load([...randomPoints(100, BBOX), ...bad]);
         // then
-        expect(index.skipped).toBe(2);
+        expect(index.skipped).toBe(5);
+    });
+
+    it("getTile given a zero-size shape returns it as a point above maxZoom", () => {
+        // given: R = maxZoom + 1, so it is never drawn as a shape
+        const start = randomLocation(BBOX);
+        const line = straightLine(start, 0);
+        const index = new FeatureIndex(OPTIONS);
+        index.load([line]);
+        const z = OPTIONS.maxZoom + 1;
+        const [{ x, y }] = tilesCovering([start[0], start[1], start[0], start[1]], z);
+        // when
+        const tile = index.getTile(z, x, y);
+        // then
+        expect(tile.features.map(f => f.id)).toEqual([line.id]);
+        expect(tile.shapes).toEqual([]);
     });
 
     it("toIndexItems given features without ids assigns unique featureIds", () => {

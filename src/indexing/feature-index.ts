@@ -28,7 +28,9 @@ export function toIndexItems(features: GeoJSON.Feature<GeoJSON.Geometry | null>[
     features.forEach((feature, index) => {
         const featureId = String(feature.id ?? index);
         const geometry = feature.geometry;
-        if (geometry?.type === "Point") {
+        if (isEmpty(geometry)) {
+            skipped++;
+        } else if (geometry?.type === "Point") {
             items.push(item(featureId, "point", geometry.coordinates, Infinity));
         } else if (geometry?.type === "Polygon" || geometry?.type === "LineString") {
             const kind = geometry.type === "Polygon" ? "polygon" : "line";
@@ -41,6 +43,11 @@ export function toIndexItems(features: GeoJSON.Feature<GeoJSON.Geometry | null>[
         }
     });
     return { items, shapes, skipped };
+}
+
+function isEmpty(geometry: GeoJSON.Geometry | null): boolean {
+    if (geometry?.type === "Polygon") return !geometry.coordinates[0]?.length;
+    return (geometry?.type === "Point" || geometry?.type === "LineString") && geometry.coordinates.length === 0;
 }
 
 export class FeatureIndex {
@@ -84,9 +91,10 @@ export class FeatureIndex {
     }
 
     getTile(z: number, x: number, y: number): { features: TileItem[]; shapes: TileShape[] } {
-        // an anchor stays in trees[R] and above as an unclustered point; from R on its shape is drawn instead
+        // an anchor stays in trees[R] and above as an unclustered point; from R on its shape is drawn instead.
+        // Zooms above maxZoom reuse trees[maxZoom + 1], whose R = maxZoom + 1 anchors are never drawn as shapes
         const features: TileItem[] = (this.cluster.getTile(z, x, y)?.features ?? [])
-            .filter(f => "cluster" in f.tags || (f.tags as ItemProps).revealZoom > z);
+            .filter(f => "cluster" in f.tags || (f.tags as ItemProps).revealZoom > Math.min(z, this.options.maxZoom));
         const shapes = (this.shapeIndex?.search(...tileBBox(z, x, y)) ?? [])
             .map(i => this.shapes[i])
             .filter(s => s.revealZoom <= z)
