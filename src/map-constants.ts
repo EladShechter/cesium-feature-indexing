@@ -23,3 +23,13 @@ export const CLUSTER_GAP_PX = 4;
 // apart (at least, since a tile is shown at >= TILE_SIZE_PX). Bubbles don't touch when it is at least the largest
 // bubble's diameter, so it is derived from the sprite size: bigger sprites -> bigger radius -> fewer, coarser clusters.
 export const CLUSTER_RADIUS_PX = 2 * (SPRITE_MAX_RADIUS_PX + SPRITE_PAD_PX) + CLUSTER_GAP_PX;
+
+// A shape (polygon / line) is drawn as geometry once its larger bbox side reaches this many on-screen pixels
+export const REVEAL_SIZE_PX = 32;
+
+// Polygon fill color
+export const SHAPE_POLYGON_FILL = "rgba(255, 140, 0, 0.35)";
+// Polygon outline color
+export const SHAPE_POLYGON_OUTLINE = "#ff8c00";
+// Polyline color
+export const SHAPE_LINE_COLOR = "#1e88e5";

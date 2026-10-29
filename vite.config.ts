@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
@@ -12,6 +13,10 @@ export default defineConfig({
     ],
     define: {
         CESIUM_BASE_URL: JSON.stringify("/cesium")
+    },
+    test: {
+        environment: "node",
+        include: ["src/**/*.test.ts"]
     },
     server: {
         port: 5173
