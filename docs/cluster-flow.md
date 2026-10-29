@@ -49,7 +49,8 @@ requested again if it comes back into view.
   Now:
   - `radius` is given in screen px (64) and converted to extent units by the worker.
   - The zoom uses 256 px tiles and `floor`, so a tile is never smaller than 256 px on screen.
-  - The sprites are at most 60 px, with their size set in CSS px.
+  - The sprites are at most 60 CSS px. They are drawn at the drawing-buffer pixel ratio and rendered at device
+    resolution (`useBrowserRecommendedResolution: false`), so each sprite pixel maps to one screen pixel and stays sharp.
 
   Measured at the worst-case scale: about 0–6% of clusters touch a neighbour, compared with each cluster overlapping 3–17 others before.
   What remains comes from Supercluster placing each cluster at the weighted centre of its points, which can pull two centres

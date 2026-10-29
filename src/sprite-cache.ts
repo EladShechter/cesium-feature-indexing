@@ -21,32 +21,37 @@ const cache = new Map<Key, HTMLCanvasElement>();
  * Stable id for the sprite. Pass it to Billboard.setImage so all billboards with the same sprite share
  * one texture atlas entry (a canvas passed as `image` gets a new GUID, and a new atlas entry, per billboard).
  */
-export function clusterSpriteId(size: number, colorCss: string, text: string): Key {
-    return `cluster|${size}|${text}|${colorCss}`;
+export function clusterSpriteId(size: number, colorCss: string, text: string, pixelRatio: number): Key {
+    return `cluster|${size}|${text}|${colorCss}|${pixelRatio}`;
 }
 
 /**
- * On-screen side of the sprite in CSS pixels. Set it as the billboard width/height, because the canvas is
- * drawn at devicePixelRatio and would otherwise appear dpr times too large.
+ * Side of the sprite in drawing-buffer pixels (CSS size * pixelRatio, rounded). Use it for the billboard
+ * width/height: Cesium sizes billboards in drawing-buffer pixels, and drawing the canvas at exactly that size
+ * maps one texture pixel to one screen pixel, so the sprite is not resampled (which is what makes it blurry).
  */
-export function clusterSpriteSide(size: number): number {
-    return size * 2 + SPRITE_PAD_PX * 2;
+export function clusterSpriteSide(size: number, pixelRatio: number): number {
+    return Math.round((size * 2 + SPRITE_PAD_PX * 2) * pixelRatio);
 }
 
-export function makeClusterSprite(size: number, colorCss: string, text: string): HTMLCanvasElement {
-    const key = clusterSpriteId(size, colorCss, text);
+/**
+ * @param pixelRatio the scene's drawing-buffer pixels per CSS pixel (`scene.pixelRatio`)
+ */
+export function makeClusterSprite(size: number, colorCss: string, text: string, pixelRatio: number): HTMLCanvasElement {
+    const key = clusterSpriteId(size, colorCss, text, pixelRatio);
     const cached = cache.get(key);
     if (cached) return cached;
 
-    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1)); // crisp, bounded
     const radius = size;
     const pad = SPRITE_PAD_PX;
-    const side = clusterSpriteSide(size) * dpr;
+    const side = clusterSpriteSide(size, pixelRatio);
 
     const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = Math.ceil(side);
+    canvas.width = canvas.height = side;
     const g = canvas.getContext("2d")!;
-    g.scale(dpr, dpr);
+    // Draw in CSS units; the exact scale (side / css side) keeps the circle centred after rounding
+    const scale = side / (radius * 2 + pad * 2);
+    g.scale(scale, scale);
 
     // Circle
     g.beginPath();
@@ -59,14 +64,12 @@ export function makeClusterSprite(size: number, colorCss: string, text: string):
 
     // Text
     // Longer labels (e.g. "1.23K") get a smaller font so they stay inside the circle
-    g.font = `${Math.round(radius * (text.length > 3 ? 0.55 : 0.7))}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+    // Semibold white on the solid circle is readable without an outline (a thick dark stroke fills in small glyphs)
+    g.font = `600 ${Math.round(radius * (text.length > 3 ? 0.58 : 0.72))}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     g.textAlign = "center";
     g.textBaseline = "middle";
-    g.lineWidth = 3;
-    g.strokeStyle = "black";
     g.fillStyle = "white";
     const cx = radius + pad, cy = radius + pad;
-    g.strokeText(text, cx, cy);
     g.fillText(text, cx, cy);
 
     cache.set(key, canvas);

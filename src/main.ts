@@ -28,6 +28,10 @@ const viewer = new Viewer("cesiumContainer", {
     infoBox: false,
     selectionIndicator: false,
     geocoder: false,
+    // Render at device resolution. By default Cesium renders at CSS resolution and the browser upscales the canvas
+    // on scaled displays (125%, 150%...), which blurs the cluster sprites and map labels.
+    // Costs devicePixelRatio^2 more pixels to shade; set viewer.resolutionScale < 1 if the GPU struggles.
+    useBrowserRecommendedResolution: false,
     // The default base layer is Bing via Cesium ion, which needs an ion token (black globe without one).
     // OSM tiles are free, but meant for light use: https://operations.osmfoundation.org/policies/tiles/
     baseLayer: new ImageryLayer(new OpenStreetMapImageryProvider({ url: "https://tile.openstreetmap.org/" }))

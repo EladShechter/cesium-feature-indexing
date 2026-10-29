@@ -41,8 +41,10 @@ export abstract class BaseRenderer {
                 const size = sizeForCount(count);
                 const color = colorForCount(count);
                 const text = formatCount(count);
-                const sprite = makeClusterSprite(size, color, text);
-                const side = clusterSpriteSide(size);
+                // Billboards are sized in drawing-buffer pixels, so draw the sprite at the scene's pixel ratio
+                const pixelRatio = this.drawingBufferPixelRatio();
+                const sprite = makeClusterSprite(size, color, text, pixelRatio);
+                const side = clusterSpriteSide(size, pixelRatio);
 
                 const billboard = this.billboardCollection.add({
                     position: pos,
@@ -51,7 +53,7 @@ export abstract class BaseRenderer {
                     verticalOrigin: VerticalOrigin.CENTER,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY,
                 });
-                billboard.setImage(clusterSpriteId(size, color, text), sprite);
+                billboard.setImage(clusterSpriteId(size, color, text, pixelRatio), sprite);
 
                 billboard.id = {
                     kind: "cluster",
@@ -62,6 +64,7 @@ export abstract class BaseRenderer {
             } else {
                 const point = this.pointCollection.add({
                     position: pos,
+                    // pixelSize is in CSS pixels (unlike billboards, the point shader applies czm_pixelRatio)
                     pixelSize: 6,
                     color: Color.SKYBLUE,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -76,6 +79,14 @@ export abstract class BaseRenderer {
             console.error("Error drawing feature:", error);
             return null;
         }
+    }
+
+    /**
+     * Drawing-buffer pixels per CSS pixel. Same formula as Cesium's (private) scene.pixelRatio.
+     */
+    private drawingBufferPixelRatio(): number {
+        const dpr = this.viewer.useBrowserRecommendedResolution ? 1 : window.devicePixelRatio;
+        return dpr * this.viewer.resolutionScale;
     }
 
     /**
