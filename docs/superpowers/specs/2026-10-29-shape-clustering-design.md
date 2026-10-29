@@ -19,7 +19,7 @@ while it covers a large part of the screen.
 | Real data | Mostly small/simple shapes (tens of vertices). Revealed shapes are drawn whole, once each, without tiling or simplification |
 | Clusters | One mixed count of points and shapes. Each cluster keeps a per-type breakdown (points / polygons / lines) |
 | Index | Supercluster subclass that adds shapes at their reveal zoom (only `load()` is replaced), plus a Flatbush R-tree for revealed shapes |
-| Tests | None for now (see "Risks") |
+| Tests | Vitest unit tests for the index, the helpers and `ShapeLayer` (see "Testing") |
 
 ## Concepts
 
@@ -106,6 +106,9 @@ never revealed). It is queried per tile with the tile's lon/lat bbox and filtere
 
 - `addTile(tileKey, shapes)`: `refCount++` per shape id. A shape is drawn on 0 → 1.
 - `removeTile(tileKey)`: `refCount--` per shape id of that tile. A shape is removed on 1 → 0.
+- `ShapeLayer` holds only the ref-counting logic and draws through a small interface,
+  `ShapeDrawer { add(shape): void; remove(id: string): void; count(): number }`. This keeps it testable without Cesium.
+- `EntityShapeDrawer` (`rendering/entity-shape-drawer.ts`, new) implements `ShapeDrawer` with Cesium entities.
 - Drawing: entities in a `CustomDataSource`, with constant graphics (no `CallbackProperty`).
   - **Polygons:** translucent fill (`SHAPE_POLYGON_FILL`) and a 1 px outline (`SHAPE_POLYGON_OUTLINE`), at height 0.
     Polygons are not clamped to ground (no terrain), so the outline works.
@@ -146,6 +149,49 @@ never revealed). It is queried per tile with the tile's lon/lat bbox and filtere
 
 - `supercluster`: pinned to exactly `8.0.1` (remove the `^`), because the subclass depends on its internals.
 - New: `flatbush`, `@turf/point-on-feature`, `@turf/along`, `@turf/length`, `@turf/bbox`.
+- New dev dependency: `vitest`, plus an `npm test` script (`vitest run`).
+
+## Testing
+
+Vitest, Node environment, test files next to the code (`src/**/*.test.ts`). The index tests use the real
+Supercluster, not mocks.
+
+Conventions (mirroring the team's Java test conventions):
+- Test names follow `<method> given <use case>`.
+- Every test has `// given`, `// when` and `// then` comments (the given block may be empty).
+- Test data comes from small builder helpers (`src/test-utils/feature-builders.ts`: random points, square polygons
+  and straight lines of a given size at a given location) instead of inline literals, with random values where the
+  exact value does not matter.
+
+### `shape-index.test.ts`
+
+1. **Equivalence:** with points only, `RevealSupercluster` and plain `Supercluster` (same options) return identical
+   `getTile` output for every tile covering the data at zooms 0, 5, 10 and 15. This guards against Supercluster
+   internals changing on upgrade.
+2. **Reveal:** for a shape of known size (so a known `R`):
+   - at every `z < R`, it is represented as a point (a single point, or a member of a cluster);
+   - from `z = R` on, it is absent from the tile points and returned by the shape query.
+3. **Counts add up:** with a mixed dataset, at every zoom the sum of `point_count` (clusters) and singles over all
+   tiles equals the number of points plus the shapes with `R > z`. Each cluster's `points + polygons + lines`
+   equals its `point_count`.
+4. **Leaves:** `getLeaves` of the cluster that contains a shape at `z = R - 1` includes that shape's anchor
+   (`kind` and `featureId` set).
+5. **Skipped input:** features with missing or Multi* geometries are skipped and counted, and do not break the build.
+
+### `reveal.test.ts` (helpers in `shape-index.ts`)
+
+1. **Reveal zoom:** returns the expected `R` for known sizes, clamps to `maxZoom + 1`, gives `maxZoom + 1` for
+   a zero-size shape and `<= 0` for a world-sized shape.
+2. **Anchor point:** for a concave (U-shaped) polygon whose centroid lies outside it, the anchor is inside the polygon.
+   For a line, the anchor lies on the line at half its length.
+
+### `shape-layer.test.ts` (with a fake `ShapeDrawer`)
+
+1. A shape referenced by 2 tiles is drawn once.
+2. It is removed only after both tiles are removed.
+3. Across a zoom swap (new zoom's tiles added before the old zoom's tiles are removed), a shared shape is never
+   removed and re-added.
+4. Removing an unknown tile is a no-op.
 
 ## Known behaviour and limitations
 
@@ -161,14 +207,14 @@ never revealed). It is queried per tile with the tile's lon/lat bbox and filtere
 - **Supercluster internals.** The subclass uses `_createTree`, `_cluster`, the flat data layout (stride, offsets)
   and the `trees` array. A future version can change them.
   - The exact version pin makes upgrades deliberate.
-  - **Upgrade check (manual, since there are no tests for now):** compare `getTile` output of `RevealSupercluster`
-    with plain `Supercluster` on points only, at a few zooms. They must be identical. This is a good first test when tests are added.
+  - **Upgrade check:** bump the version and run `npm test`. The equivalence test (`shape-index.test.ts` #1) fails
+    if the internals the subclass depends on have changed.
   - **Watching for releases:** `npm outdated`, GitHub "Watch → Custom → Releases" on `mapbox/supercluster`,
     or Dependabot / Renovate.
 
 ## Verification
 
-- `tsc --noEmit` and `vite build` pass.
+- `tsc --noEmit`, `vite build` and `npm test` pass.
 - Manual browser check:
   - When zoomed out, large polygons are visible next to the bubbles.
   - Zooming in, small shapes come out of their bubbles and are drawn as geometry. No shape is drawn both as a point and as geometry once tiles settle.
