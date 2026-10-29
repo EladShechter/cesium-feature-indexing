@@ -15,5 +15,9 @@ export default defineConfig({
     },
     server: {
         port: 5173
+    },
+    // main.ts uses top-level await, which the default build target does not support
+    build: {
+        target: "esnext"
     }
 });

@@ -1,10 +1,8 @@
 import {
-    CallbackProperty,
     Cartesian3,
     Color,
     ColorMaterialProperty,
     CustomDataSource,
-    DataSource,
     Entity,
     HeightReference,
     PointGraphics,
@@ -17,7 +15,7 @@ import { ClusterWorkerClient } from "../cluster-worker-client";
 import { IVectorLayerRenderer, VectorLayerStyle } from "./renderer.interface";
 import { getTileKey, getTilesInBbox } from "./tile-utils";
 import type { BBox } from "../global";
-import { Feature, FeatureCollection, Geometry, LineString, Polygon } from 'geojson';
+import { Feature, Geometry, LineString, Polygon } from 'geojson';
 
 interface CachedTile {
     entities: Entity[];
@@ -28,22 +26,20 @@ export class VectorLayerRenderer implements IVectorLayerRenderer {
     private readonly viewer: Viewer;
     private readonly client: ClusterWorkerClient;
     private readonly tileCache: Map<string, CachedTile> = new Map();
-    private vectorLayersDS!: DataSource;
+    private readonly vectorLayersDS = new CustomDataSource('vector-layers-ds');
     private currentTiles: Set<string> = new Set();
     private style: VectorLayerStyle = {} as VectorLayerStyle;
     private minZoom: number = 0;
     private maxZoom: number = 24;
     // private currentZoom: number = 0;
-    private data: FeatureCollection<Geometry> | null = null;
     private cleanupCallbacks: (() => void)[] = [];
 
     constructor(viewer: Viewer, client: ClusterWorkerClient) {
         this.viewer = viewer;
         this.client = client;
 
-        this.viewer.dataSources.add(new CustomDataSource('vector-layers-ds')).then(ds => {
-            this.vectorLayersDS = ds;
-        });
+        // The entity collection is usable immediately, no need to wait for the add() promise
+        this.viewer.dataSources.add(this.vectorLayersDS);
 
         // Setup cleanup on destroy
         this.cleanupCallbacks.push(() => {
@@ -65,7 +61,8 @@ export class VectorLayerRenderer implements IVectorLayerRenderer {
     // }
 
     requestRenderByBboxAndZoom(bbox: BBox, zoom: number): void {
-        if (zoom < this.minZoom || zoom > this.maxZoom || !this.data) {
+        // The features live in the worker's index, so there is no local data to check here
+        if (zoom < this.minZoom || zoom > this.maxZoom) {
             this.clearTiles();
             return;
         }
@@ -120,6 +117,7 @@ export class VectorLayerRenderer implements IVectorLayerRenderer {
                 entities: entitiesOnMap,
                 timestamp: Date.now()
             });
+            this.viewer.scene.requestRender();
         });
     }
 
@@ -129,9 +127,10 @@ export class VectorLayerRenderer implements IVectorLayerRenderer {
     }
 
     private createEntity(feature: Feature<Geometry>): Entity.ConstructorOptions {
+        // A feature crossing tile borders appears in several tiles, so the entity id is left for Cesium
+        // to generate (reusing feature.id makes entities.add() throw on duplicates)
         const entity: Entity.ConstructorOptions = {
-            id: feature.id?.toString(),
-            properties: feature.properties ?? {}
+            properties: { ...feature.properties, featureId: feature.id }
         };
 
         const style = this.getFeatureStyle(feature);
@@ -139,7 +138,7 @@ export class VectorLayerRenderer implements IVectorLayerRenderer {
         switch (feature.geometry.type) {
             case 'Polygon':
                 entity.polygon = new PolygonGraphics({
-                    hierarchy: new CallbackProperty(() => this.convertToHierarchy(feature.geometry as Polygon), false),
+                    hierarchy: this.convertToHierarchy(feature.geometry as Polygon),
                     material: new ColorMaterialProperty(Color.fromCssColorString(style.fillColor) || Color.WHITE.withAlpha(0.5)),
                     outline: true,
                     outlineColor: Color.fromCssColorString(style.strokeColor) || Color.WHITE,
@@ -150,7 +149,7 @@ export class VectorLayerRenderer implements IVectorLayerRenderer {
 
             case 'LineString':
                 entity.polyline = new PolylineGraphics({
-                    positions: new CallbackProperty(() => this.convertToPositions(feature.geometry as LineString), false),
+                    positions: this.convertToPositions(feature.geometry as LineString),
                     material: new ColorMaterialProperty(Color.fromCssColorString(style.strokeColor) || Color.WHITE),
                     width: style.strokeWidth || 1,
                     clampToGround: true
@@ -160,8 +159,8 @@ export class VectorLayerRenderer implements IVectorLayerRenderer {
             case 'Point':
                 entity.point = new PointGraphics({
                     pixelSize: style.pointRadius || 5,
-                    color: new ColorMaterialProperty(Color.fromCssColorString(style.fillColor) || Color.WHITE),
-                    outlineColor: new ColorMaterialProperty(Color.fromCssColorString(style.strokeColor) || Color.BLACK),
+                    color: Color.fromCssColorString(style.fillColor) || Color.WHITE,
+                    outlineColor: Color.fromCssColorString(style.strokeColor) || Color.BLACK,
                     outlineWidth: 1,
                     heightReference: HeightReference.CLAMP_TO_GROUND
                 });
@@ -207,12 +206,14 @@ export class VectorLayerRenderer implements IVectorLayerRenderer {
                 }
             }
         }
+        this.viewer.scene.requestRender();
     }
 
     private clearTiles(): void {
         this.vectorLayersDS.entities.removeAll();
         this.tileCache.clear();
         this.currentTiles.clear();
+        this.viewer.scene.requestRender();
     }
 
     // private refresh(): void {

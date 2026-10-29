@@ -23,7 +23,8 @@ export function buildRandomLineStringFeatures(N: number, bbox: BBox): GeoJSON.Fe
 }
 
 export function buildRandomPolygonFeatures(N: number, bbox: BBox): GeoJSON.Feature<GeoJSON.Polygon>[] {
-    const random = randomPolygon(N, { bbox });
+    // turf's default max_radial_length is 10 degrees, larger than a country-sized bbox (turf throws)
+    const random = randomPolygon(N, { bbox, max_radial_length: 0.01 });
     random.features.forEach(feature => feature.id = ensureId());
 
     return random.features;

@@ -7,9 +7,10 @@ import { ClusterWorkerClient, TileResponse } from '../cluster-worker-client';
 
 type RenderedFeatures = { billboards: Billboard[]; points: PointPrimitive[] };
 type TileStatus = {
-    state: 'pending' | 'ready' | 'removed';
-    onComplete?: () => void;
+    state: 'pending' | 'ready';
 };
+
+const MAX_MERCATOR_LAT = 85.0511287798;
 
 // Cache configuration
 // const CACHE_CONFIG = {
@@ -24,6 +25,8 @@ type TileStatus = {
 export class TileRenderer extends BaseRenderer implements IRenderer {
     private tileStatuses: Map<string, TileStatus> = new Map();
     private renderedFeatures: Map<string, RenderedFeatures> = new Map();
+    // Ready tiles that left the view, kept on screen until all current tiles are ready (avoids a blank flash)
+    private staleTiles: Set<string> = new Set();
     
     // // Tile cache: stores raw tile data
     // private tileCache: Map<string, { data: any; timestamp: number }> = new Map();
@@ -46,6 +49,9 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         for (const t of tiles) {
             const tileKey = `${zoom}/${t.x}/${t.y}`;
             currentTileKeys.add(tileKey);
+
+            // A stale tile that came back into view is still drawn, just keep it
+            this.staleTiles.delete(tileKey);
 
             // Skip if already processing or rendered
             if (this.tileStatuses.has(tileKey)) {
@@ -107,18 +113,13 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         console.log("Current tile statuses:", this.tileStatuses);
         console.log("Removing tiles:", tilesToRemove);
 
+        // Pending tiles just lose their status, so their response is ignored by drawTile and they are
+        // requested again if they come back into view. Ready tiles stay on screen as stale until the new ones are ready.
         for (const [tileKey, status] of tilesToRemove) {
-            if (status.state === 'ready') {
-                // Remove immediately if already rendered
+            if (status.state === 'pending') {
                 this.removeTile(tileKey);
-            } else if (status.state === 'pending') {
-                // Schedule removal when rendering completes
-                const originalOnComplete = status.onComplete;
-                status.state = 'removed';
-                status.onComplete = () => {
-                    this.removeTile(tileKey);
-                    originalOnComplete?.();
-                };
+            } else {
+                this.staleTiles.add(tileKey);
             }
         }
 
@@ -127,6 +128,21 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
                 this.removeTile(key);
             }
         }
+
+        this.removeStaleTilesWhenAllReady();
+    }
+
+    private removeStaleTilesWhenAllReady(): void {
+        for (const status of this.tileStatuses.values()) {
+            if (status.state === 'pending') return;
+        }
+
+        for (const tileKey of this.staleTiles) {
+            this.removeTile(tileKey);
+        }
+        this.staleTiles.clear();
+        this.updateHUD();
+        this.viewer.scene.requestRender();
     }
 
     private removeTile(tileKey: string): void {
@@ -147,9 +163,9 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         const { z, x: xTile, y: yTile, extent, features } = tile;
         const tileKey = `${z}/${xTile}/${yTile}`;
         
-        // Check if this tile is still needed
+        // Only a pending tile is still needed (a ready one means this is a duplicate response)
         const tileStatus = this.tileStatuses.get(tileKey);
-        if (!tileStatus || tileStatus.state === 'removed') {
+        if (tileStatus?.state !== 'pending') {
             console.log(`Skipping rendering of removed tile: ${tileKey}`);
             return;
         }
@@ -169,12 +185,9 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         const tileStatus = this.tileStatuses.get(tileKey);
         if (tileStatus) {
             tileStatus.state = 'ready';
-            // If there's a pending cleanup, execute it now
-            if (tileStatus.onComplete) {
-                tileStatus.onComplete();
-            }
         }
 
+        this.removeStaleTilesWhenAllReady();
         this.updateHUD();
         this.viewer.scene.requestRender();
     }
@@ -191,6 +204,9 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
 
         for (const tf of features) {
             if (tf.type !== 1) continue;
+            // Supercluster adds a buffer of features from neighbouring tiles (coordinates outside [0, extent)),
+            // skip them so features near tile borders are drawn only once, by the tile that owns them
+            if (!this.isInsideTile(tf, extent)) continue;
             const tags = (tf.tags || {}) as ClusterProperties;
 
             const { lat, lon } = this.getLatLonFromTileFeature(tf, z, xTile, yTile, extent);
@@ -206,14 +222,16 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
             }
         }
 
-        if (renderedFeatures.billboards.length > 0 || renderedFeatures.points.length > 0) {
-            this.renderedFeatures.set(tileKey, renderedFeatures);
-            // Cache the rendered features for this zoom level
-            // this.cacheFeatures(tileKey, renderedFeatures);
-            this.updateTileRendered(tileKey);
-        } else {
-            this.tileStatuses.delete(tileKey);
-        }
+        // Empty tiles are marked ready too, so they are not requested again on every camera move
+        this.renderedFeatures.set(tileKey, renderedFeatures);
+        // Cache the rendered features for this zoom level
+        // this.cacheFeatures(tileKey, renderedFeatures);
+        this.updateTileRendered(tileKey);
+    }
+
+    private isInsideTile(tileFeature: Supercluster.TileFeature<any, any>, extent: number): boolean {
+        const [px, py] = tileFeature.geometry[0];
+        return px >= 0 && px < extent && py >= 0 && py < extent;
     }
 
 
@@ -287,20 +305,32 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         }
 
         function lat2tileY(lat: number): number {
-            const rad = (lat * Math.PI) / 180;
+            // Web mercator is undefined at the poles, clamp to its latitude limit
+            const clampedLat = Math.max(-MAX_MERCATOR_LAT, Math.min(MAX_MERCATOR_LAT, lat));
+            const rad = (clampedLat * Math.PI) / 180;
             return Math.floor(
                 ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n
             );
         }
 
-        const x0 = lon2tileX(west);
-        const y0 = lat2tileY(north);
-        const x1 = lon2tileX(east);
-        const y1 = lat2tileY(south);
+        const clampTile = (v: number) => Math.max(0, Math.min(n - 1, v));
+        const x0 = clampTile(lon2tileX(west));
+        const x1 = clampTile(lon2tileX(east));
+        const y0 = clampTile(lat2tileY(north));
+        const y1 = clampTile(lat2tileY(south));
+
+        // A view crossing the antimeridian has west > east, so it wraps around from x0 to x1
+        const xs: number[] = [];
+        if (west <= east) {
+            for (let x = x0; x <= x1; x++) xs.push(x);
+        } else {
+            for (let x = x0; x < n; x++) xs.push(x);
+            for (let x = 0; x <= x1; x++) xs.push(x);
+        }
 
         const tiles: Array<{ x: number; y: number }> = [];
-        for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
-            for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) {
+        for (const x of xs) {
+            for (let y = y0; y <= y1; y++) {
                 tiles.push({ x, y });
             }
         }

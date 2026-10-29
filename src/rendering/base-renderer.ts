@@ -8,7 +8,14 @@ import {
     Viewer
 } from "cesium";
 import { ClusterWorkerClient } from "../cluster-worker-client";
-import { colorForCount, formatCount, makeClusterSprite, sizeForCount } from "../sprite-cache";
+import {
+    clusterSpriteId,
+    clusterSpriteSide,
+    colorForCount,
+    formatCount,
+    makeClusterSprite,
+    sizeForCount
+} from "../sprite-cache";
 import Supercluster, { ClusterProperties } from 'supercluster';
 
 export abstract class BaseRenderer {
@@ -35,13 +42,16 @@ export abstract class BaseRenderer {
                 const color = colorForCount(count);
                 const text = formatCount(count);
                 const sprite = makeClusterSprite(size, color, text);
+                const side = clusterSpriteSide(size);
 
                 const billboard = this.billboardCollection.add({
                     position: pos,
-                    image: sprite,
+                    width: side,
+                    height: side,
                     verticalOrigin: VerticalOrigin.CENTER,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY,
                 });
+                billboard.setImage(clusterSpriteId(size, color, text), sprite);
 
                 billboard.id = {
                     kind: "cluster",

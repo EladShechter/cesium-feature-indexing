@@ -4,24 +4,25 @@ import GeoJSONVT from 'geojson-vt';
 import type * as GeoJSON from 'geojson';
 
 import type { BBox, WorkerRequest, WorkerResponse } from "./global";
+import { CLUSTER_RADIUS_PX, EXTENT, TILE_SIZE_PX } from "./map-constants";
 
 type Feature = GeoJSON.Feature<GeoJSON.Point>;
 
 let index: Supercluster<any, any> | null = null;
 let vectorTileIndex: any = null;
-const EXTENT = 4096;
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
     const msg = e.data;
 
     if (msg.type === "build") {
+        // options.radius is in screen pixels, but supercluster measures radius in extent units
+        const radiusPx = msg.options?.radius ?? CLUSTER_RADIUS_PX;
         index = new Supercluster({
             minPoints: 2,
-            radius: 40,   // pixels
             maxZoom: 18,
+            ...(msg.options || {}),
             extent: EXTENT,
-            // web mercator zooms
-            ...(msg.options || {})
+            radius: radiusPx * EXTENT / TILE_SIZE_PX
         });
         index.load(msg.points);
         const res: WorkerResponse = { type: "built", ok: true };
@@ -86,13 +87,10 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         }
         
         const tile = vectorTileIndex.getTile(msg.z, msg.x, msg.y);
-        const features = tile ? tile.features.map((f: any) => ({
-            type: 'Feature',
-            id: f.id,
-            geometry: f.geometry,
-            properties: f.tags
-        })) : [];
-        
+        const features = tile
+            ? tile.features.flatMap((f: any) => toGeoJsonFeatures(f, msg.z, msg.x, msg.y))
+            : [];
+
         postMessage({ 
             type: "vectorTile", 
             z: msg.z, 
@@ -103,3 +101,33 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         return;
     }
 };
+
+// geojson-vt tile features use numeric types (1 = point, 2 = line, 3 = polygon) and tile-pixel
+// coordinates in [0, EXTENT], so convert them back to lon/lat GeoJSON.
+// Multi-part points/lines are split into one feature per part (all sharing the source id).
+function toGeoJsonFeatures(f: any, z: number, x: number, y: number): GeoJSON.Feature<GeoJSON.Geometry>[] {
+    const toLonLat = (p: [number, number]) => tilePixelToLonLat(p, z, x, y);
+    const feature = (geometry: GeoJSON.Geometry): GeoJSON.Feature<GeoJSON.Geometry> =>
+        ({ type: 'Feature', id: f.id, geometry, properties: f.tags });
+
+    if (f.type === 1) {
+        return f.geometry.map((p: [number, number]) => feature({ type: 'Point', coordinates: toLonLat(p) }));
+    }
+    if (f.type === 2) {
+        return f.geometry.map((line: [number, number][]) => feature({ type: 'LineString', coordinates: line.map(toLonLat) }));
+    }
+    if (f.type === 3) {
+        // NOTE: the first ring is treated as the outer ring and the rest as holes, so MultiPolygons are not supported
+        return [feature({ type: 'Polygon', coordinates: f.geometry.map((ring: [number, number][]) => ring.map(toLonLat)) })];
+    }
+    return [];
+}
+
+function tilePixelToLonLat([px, py]: [number, number], z: number, x: number, y: number): [number, number] {
+    const n = Math.pow(2, z);
+    const worldX = (px / EXTENT + x) / n;
+    const worldY = (py / EXTENT + y) / n;
+    const lon = worldX * 360 - 180;
+    const lat = (Math.atan(Math.sinh(Math.PI * (1 - 2 * worldY))) * 180) / Math.PI;
+    return [lon, lat];
+}

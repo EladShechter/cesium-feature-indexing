@@ -1,18 +1,19 @@
 import "cesium/Build/Cesium/Widgets/widgets.css";
-import { Viewer, BillboardCollection, PointPrimitiveCollection, Rectangle } from "cesium";
+import { Viewer, Rectangle, ImageryLayer, OpenStreetMapImageryProvider } from "cesium";
 import {
     buildRandomPointFeatures,
-    buildFeatureIndex,
-    buildRandomLineStringFeatures,
-    buildRandomPolygonFeatures
+    // buildRandomLineStringFeatures,
+    // buildRandomPolygonFeatures
 } from "./data";
-import { ClusterRenderer, IRenderer, TileRenderer } from "./rendering";
+import { IRenderer, TileRenderer } from "./rendering";
 import { setupPicking } from "./picking";
 import type { BBox } from "./global";
 import { ClusterWorkerClient } from "./cluster-worker-client";
 import { CameraHandler } from './camera-handler';
-import { VectorLayerRenderer } from './rendering/vector-layer-renderer';
-import { FeatureCollection, Geometry } from 'geojson';
+import { setupZoomControls } from './zoom-controls';
+import { CLUSTER_RADIUS_PX } from './map-constants';
+// import { VectorLayerRenderer } from './rendering/vector-layer-renderer';
+// import { FeatureCollection } from 'geojson';
 
 declare const CESIUM_BASE_URL: string;
 (window as any).CESIUM_BASE_URL = CESIUM_BASE_URL;
@@ -26,7 +27,10 @@ const viewer = new Viewer("cesiumContainer", {
     timeline: false,
     infoBox: false,
     selectionIndicator: false,
-    geocoder: false
+    geocoder: false,
+    // The default base layer is Bing via Cesium ion, which needs an ion token (black globe without one).
+    // OSM tiles are free, but meant for light use: https://operations.osmfoundation.org/policies/tiles/
+    baseLayer: new ImageryLayer(new OpenStreetMapImageryProvider({ url: "https://tile.openstreetmap.org/" }))
 });
 
 // Render on demand
@@ -46,8 +50,9 @@ await flyToBbox(bbox);
 const maxZoom = 18;
 
 // Build features
-// const features = buildRandomPointFeatures(N, bbox);
-const features = [...buildRandomLineStringFeatures(N/2, bbox), ...buildRandomPolygonFeatures(N/2, bbox)]
+const features = buildRandomPointFeatures(N, bbox);
+// Vector tiles flow (lines + polygons), see docs/vector-tiles-flow.md:
+// const features = [...buildRandomLineStringFeatures(N/2, bbox), ...buildRandomPolygonFeatures(N/2, bbox)]
 
 // ————————————————————————————————————————————————————————————————————————
 // Worker client: build index then serve cluster queries
@@ -58,10 +63,9 @@ const cameraHandler = new CameraHandler(viewer, hudZoom, maxZoom);
 
 
 // Create renderer class instance
-const renderer: IRenderer = new VectorLayerRenderer(
-    viewer,
-    client
-);
+const renderer: IRenderer = new TileRenderer(viewer, client);
+// Vector tiles flow:
+// const renderer: IRenderer = new VectorLayerRenderer(viewer, client);
 renderer.registerRenderingResult();
 
 client.addBuiltListener(() => {
@@ -69,14 +73,17 @@ client.addBuiltListener(() => {
 });
 
 // Build the index off-thread
-// client.build(features, { minPoints: 2, radius: 40, maxZoom: maxZoom });
-const featureCollection: FeatureCollection = { type: 'FeatureCollection', features };
-client.buildVectorTiles(featureCollection);
+// radius is in screen pixels, derived from the largest cluster sprite so bubbles don't overlap (see map-constants.ts)
+client.build(features, { minPoints: 2, radius: CLUSTER_RADIUS_PX, maxZoom: maxZoom });
+// Vector tiles flow:
+// const featureCollection: FeatureCollection = { type: 'FeatureCollection', features };
+// client.buildVectorTiles(featureCollection);
 
 cameraHandler.setRenderingOnCameraChange((bbox, zoom) => renderer.requestRenderByBboxAndZoom(bbox, zoom));
+setupZoomControls(viewer);
 
 // Setup drill picking via extracted module
-// setupPicking(viewer, client, features);
+setupPicking(viewer, client, features);
 
 async function flyToBbox(bbox: BBox): Promise<void> {
     const rect = Rectangle.fromDegrees(bbox[0], bbox[1], bbox[2], bbox[3]);

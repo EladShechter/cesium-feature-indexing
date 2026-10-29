@@ -100,6 +100,7 @@ export class ClusterWorkerClient {
     // posting methods
     build(points: GeoJSON.Feature<GeoJSON.Point>[], options?: any) {
         const msg: WorkerRequest = { type: "build", points, options } as any;
+        this.worker.postMessage(msg);
     }
 
     clusters(bbox: BBox, zoom: number) {
