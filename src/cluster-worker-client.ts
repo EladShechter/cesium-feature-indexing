@@ -1,16 +1,14 @@
-import type { BBox, WorkerRequest, WorkerResponse } from "./global";
+import type { TileShape, WorkerRequest, WorkerResponse } from "./global";
+import type { IndexOptions, ItemProps, TileItem } from "./indexing/feature-index";
 import type * as GeoJSON from 'geojson';
-import Supercluster from 'supercluster';
 
-export type ClustersFeature = GeoJSON.Feature<GeoJSON.Point, any>;
-export type LeafFeature = GeoJSON.Feature<GeoJSON.Point>;
-export type TileResponse = { type: "tile"; z: number; x: number; y: number; extent: number; features: Supercluster.TileFeature<any, any>[] };
+export type LeafFeature = GeoJSON.Feature<GeoJSON.Point, ItemProps>;
+export type TileResponse = { type: "tile"; z: number; x: number; y: number; extent: number; features: TileItem[]; shapes: TileShape[] };
 export type VectorTileResponse = { type: "vectorTile"; z: number; x: number; y: number; features: GeoJSON.Feature<GeoJSON.Geometry>[] };
 
 export class ClusterWorkerClient {
     private worker: Worker;
     private builtHandlers: Array<() => void> = [];
-    private clusterHandlers: Array<(features: ClustersFeature[]) => void> = [];
     private leafHandlers: Array<(features: LeafFeature[]) => void> = [];
     private tileHandlers: Array<(tile: TileResponse) => void> = [];
     private vectorTileHandlers: Array<(tile: VectorTileResponse) => void> = [];
@@ -23,11 +21,6 @@ export class ClusterWorkerClient {
             if (data.type === "built") {
                 this.indexBuilt = true;
                 this.builtHandlers.forEach((h) => h());
-                return;
-            }
-            if (data.type === "clusters") {
-                const features = data.features as ClustersFeature[];
-                this.clusterHandlers.forEach((h) => h(features));
                 return;
             }
             if (data.type === "leaves") {
@@ -53,10 +46,6 @@ export class ClusterWorkerClient {
         this.builtHandlers.push(handler);
     }
 
-    addClustersListener(handler: (features: ClustersFeature[]) => void) {
-        this.clusterHandlers.push(handler);
-    }
-
     addLeavesListener(handler: (features: LeafFeature[]) => void) {
         this.leafHandlers.push(handler);
     }
@@ -69,9 +58,6 @@ export class ClusterWorkerClient {
         this.builtHandlers = this.builtHandlers.filter(h => h !== handler);
     }
 
-    removeClustersListener(handler: (features: ClustersFeature[]) => void) {
-        this.clusterHandlers = this.clusterHandlers.filter(h => h !== handler);
-    }
     removeLeavesListener(handler: (features: LeafFeature[]) => void) {
         this.leafHandlers = this.leafHandlers.filter(h => h !== handler);
     }
@@ -98,13 +84,8 @@ export class ClusterWorkerClient {
     }
 
     // posting methods
-    build(points: GeoJSON.Feature<GeoJSON.Point>[], options?: any) {
-        const msg: WorkerRequest = { type: "build", points, options } as any;
-        this.worker.postMessage(msg);
-    }
-
-    clusters(bbox: BBox, zoom: number) {
-        const msg: WorkerRequest = { type: "clusters", bbox, zoom } as any;
+    build(features: GeoJSON.Feature<GeoJSON.Geometry>[], options: IndexOptions) {
+        const msg: WorkerRequest = { type: "build", features, options };
         this.worker.postMessage(msg);
     }
 

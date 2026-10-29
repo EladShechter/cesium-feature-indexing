@@ -2,8 +2,12 @@ import { Billboard, BillboardCollection, Cartesian3, PointPrimitive, PointPrimit
 import { IRenderer } from "./renderer.interface";
 import { BaseRenderer } from "./base-renderer";
 import type { BBox } from "../global";
-import Supercluster, { ClusterProperties } from 'supercluster';
+import type { ClusterProperties } from 'supercluster';
 import { ClusterWorkerClient, TileResponse } from '../cluster-worker-client';
+import type { TileItem } from '../indexing/feature-index';
+import type { TileShape } from '../global';
+import { ShapeLayer } from './shape-layer';
+import { EntityShapeDrawer } from './entity-shape-drawer';
 
 type RenderedFeatures = { billboards: Billboard[]; points: PointPrimitive[] };
 type TileStatus = {
@@ -27,6 +31,7 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
     private renderedFeatures: Map<string, RenderedFeatures> = new Map();
     // Ready tiles that left the view, kept on screen until all current tiles are ready (avoids a blank flash)
     private staleTiles: Set<string> = new Set();
+    private readonly shapeLayer = new ShapeLayer(new EntityShapeDrawer(this.viewer));
     
     // // Tile cache: stores raw tile data
     // private tileCache: Map<string, { data: any; timestamp: number }> = new Map();
@@ -156,11 +161,17 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
             }
             this.renderedFeatures.delete(tileKey);
         }
+        this.shapeLayer.removeTile(tileKey);
         this.tileStatuses.delete(tileKey);
     }
 
-    private drawTile(tile: { z: number; x: number; y: number; extent: number; features: Supercluster.TileFeature<any, any>[] }): void {
-        const { z, x: xTile, y: yTile, extent, features } = tile;
+    protected override updateHUD(): void {
+        super.updateHUD();
+        document.getElementById("hudShapes")!.textContent = String(this.shapeLayer.count());
+    }
+
+    private drawTile(tile: TileResponse): void {
+        const { z, x: xTile, y: yTile, extent, features, shapes } = tile;
         const tileKey = `${z}/${xTile}/${yTile}`;
         
         // Only a pending tile is still needed (a ready one means this is a duplicate response)
@@ -178,7 +189,7 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
         // this.cleanupTileCache();
 
         // Process the features
-        this.processTileFeatures(tileKey, features, z, xTile, yTile, extent);
+        this.processTileFeatures(tileKey, features, shapes, z, xTile, yTile, extent);
     }
 
     private updateTileRendered(tileKey: string): void {
@@ -194,7 +205,8 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
 
     private processTileFeatures(
         tileKey: string, 
-        features: Supercluster.TileFeature<any, any>[],
+        features: TileItem[],
+        shapes: TileShape[],
         z: number,
         xTile: number,
         yTile: number,
@@ -224,12 +236,13 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
 
         // Empty tiles are marked ready too, so they are not requested again on every camera move
         this.renderedFeatures.set(tileKey, renderedFeatures);
+        this.shapeLayer.addTile(tileKey, shapes);
         // Cache the rendered features for this zoom level
         // this.cacheFeatures(tileKey, renderedFeatures);
         this.updateTileRendered(tileKey);
     }
 
-    private isInsideTile(tileFeature: Supercluster.TileFeature<any, any>, extent: number): boolean {
+    private isInsideTile(tileFeature: TileItem, extent: number): boolean {
         const [px, py] = tileFeature.geometry[0];
         return px >= 0 && px < extent && py >= 0 && py < extent;
     }
@@ -285,7 +298,7 @@ export class TileRenderer extends BaseRenderer implements IRenderer {
     // }
 
 
-    private getLatLonFromTileFeature(tileFeature: Supercluster.TileFeature<any, any>, zoom: number, xTile: number, yTile: number, extent: number): {lat: number, lon: number} {
+    private getLatLonFromTileFeature(tileFeature: TileItem, zoom: number, xTile: number, yTile: number, extent: number): {lat: number, lon: number} {
         const n = Math.pow(2, zoom);
         const g = tileFeature.geometry[0];
         const tags = (tileFeature.tags || {}) as ClusterProperties;

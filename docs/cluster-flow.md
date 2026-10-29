@@ -5,8 +5,8 @@ and drawn per tile by `TileRenderer`. The disabled vector tiles flow is describe
 
 ## Flow
 
-1. `main.ts` builds random Point features and calls `client.build(features, { minPoints, radius, maxZoom })`.
-2. `cluster-worker.ts` loads them into a `Supercluster` index and replies `built`.
+1. `main.ts` builds random Point features and calls `client.build(features, { minPoints, radiusPx, maxZoom })`.
+2. `cluster-worker.ts` loads them into a `FeatureIndex` (see Shapes) and replies `built`.
 3. `CameraHandler` computes the visible bbox and a web-mercator zoom: the zoom at which a tile is at least
    `TILE_SIZE_PX` (256) on screen. It detects camera changes per frame (view matrix and canvas size, checked on
    `scene.preUpdate`), so any camera move is picked up, by mouse or in code (`flyTo`, `zoomIn`, `setView`, the zoom
@@ -29,6 +29,25 @@ and drawn per tile by `TileRenderer`. The disabled vector tiles flow is describe
 
 A pending tile that leaves the view loses its status. Its response is then ignored, and the tile is
 requested again if it comes back into view.
+
+## Shapes
+
+Polygons and lines are clustered as points below a per-shape reveal zoom and drawn as real geometry from it on.
+Design: [shape clustering spec](superpowers/specs/2026-10-29-shape-clustering-design.md).
+
+- **Reveal zoom and anchor point** (`indexing/reveal.ts`): a shape's reveal zoom is the first zoom where its bbox is at
+  least `REVEAL_SIZE_PX` on screen. Below it, the shape is a point at its anchor point and clusters with the others
+  (cluster tags carry a points/polygons/lines breakdown).
+- **`RevealSupercluster`** (`indexing/reveal-supercluster.ts`) extends `Supercluster` and adds each shape at its reveal zoom.
+  It relies on supercluster internals, so `supercluster` is pinned to an exact version (8.0.1). After upgrading it, run `npm test`
+  to check the subclass still works.
+- **`FeatureIndex`** combines the clusters and the revealed shapes of each tile. The worker's `tile` response carries
+  `features` (clusters and points) and `shapes`.
+- **`ShapeLayer`** (`rendering/shape-layer.ts`) reference-counts shapes per tile, because a shape can intersect several
+  tiles. It is drawn once (`EntityShapeDrawer`, Cesium entities) and removed with its last tile. Shapes follow the tile
+  lifecycle: added when a tile becomes ready, removed in `removeTile`.
+- **Double representation:** on a zoom change, old (stale) tiles stay until the new ones are ready, so a shape can briefly
+  be seen both as geometry and inside a bubble. Once the tiles settle it is only one of them.
 
 ## Already fixed
 

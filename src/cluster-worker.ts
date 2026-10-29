@@ -1,30 +1,20 @@
 /// <reference lib="webworker" />
-import Supercluster from "supercluster";
 import GeoJSONVT from 'geojson-vt';
 import type * as GeoJSON from 'geojson';
 
-import type { BBox, WorkerRequest, WorkerResponse } from "./global";
-import { CLUSTER_RADIUS_PX, EXTENT, TILE_SIZE_PX } from "./map-constants";
+import type { WorkerRequest, WorkerResponse } from "./global";
+import { EXTENT } from "./map-constants";
+import { FeatureIndex } from "./indexing/feature-index";
 
-type Feature = GeoJSON.Feature<GeoJSON.Point>;
-
-let index: Supercluster<any, any> | null = null;
+let index: FeatureIndex | null = null;
 let vectorTileIndex: any = null;
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
     const msg = e.data;
 
     if (msg.type === "build") {
-        // options.radius is in screen pixels, but supercluster measures radius in extent units
-        const radiusPx = msg.options?.radius ?? CLUSTER_RADIUS_PX;
-        index = new Supercluster({
-            minPoints: 2,
-            maxZoom: 18,
-            ...(msg.options || {}),
-            extent: EXTENT,
-            radius: radiusPx * EXTENT / TILE_SIZE_PX
-        });
-        index.load(msg.points);
+        index = new FeatureIndex(msg.options);
+        index.load(msg.features);
         const res: WorkerResponse = { type: "built", ok: true };
         postMessage(res);
         return;
@@ -49,21 +39,9 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         return;
     }
 
-    if (msg.type === "clusters") {
-        if (!index) return;
-        const { bbox, zoom } = msg;
-        const features = index.getClusters(bbox as any as BBox, zoom);
-        const res: WorkerResponse = { type: "clusters", features };
-        postMessage(res);
-        return;
-    }
-
     if (msg.type === "leaves") {
         if (!index) return;
-        let features: Feature[] = [];
-        if (typeof msg.cluster_id === "number") {
-            features = index.getLeaves(msg.cluster_id, Infinity, 0);
-        }
+        const features = index.getLeaves(msg.cluster_id);
         const res: WorkerResponse = { type: "leaves", features };
         postMessage(res);
         return;
@@ -72,10 +50,8 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
     if (msg.type === "tile") {
         if (!index) return;
         const { z, x, y } = msg;
-        const tile = index.getTile(z, x, y);
-        const extent = EXTENT;
-        const features = tile?.features ?? [];
-        const res: WorkerResponse = { type: "tile", z, x, y, extent, features };
+        const { features, shapes } = index.getTile(z, x, y);
+        const res: WorkerResponse = { type: "tile", z, x, y, extent: EXTENT, features, shapes };
         postMessage(res);
         return;
     }

@@ -2,6 +2,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import { Viewer, Rectangle, ImageryLayer, OpenStreetMapImageryProvider } from "cesium";
 import {
     buildRandomPointFeatures,
+    buildRandomShapeFeatures,
     // buildRandomLineStringFeatures,
     // buildRandomPolygonFeatures
 } from "./data";
@@ -47,14 +48,16 @@ const hudZoom = document.getElementById("hudZoom")!;
 // ————————————————————————————————————————————————————————————————————————
 // Generate random points and fly to bbox
 // ————————————————————————————————————————————————————————————————————————
-const N = 100_000;
 const bbox: BBox = [34.25, 29.45, 35.90, 33.35]; // avoid the poles a bit for nicer view
 await flyToBbox(bbox);
 
 const maxZoom = 18;
 
 // Build features
-const features = buildRandomPointFeatures(N, bbox);
+const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [
+    ...buildRandomPointFeatures(60_000, bbox),
+    ...buildRandomShapeFeatures(30_000, 10_000, bbox)
+];
 // Vector tiles flow (lines + polygons), see docs/vector-tiles-flow.md:
 // const features = [...buildRandomLineStringFeatures(N/2, bbox), ...buildRandomPolygonFeatures(N/2, bbox)]
 
@@ -78,7 +81,7 @@ client.addBuiltListener(() => {
 
 // Build the index off-thread
 // radius is in screen pixels, derived from the largest cluster sprite so bubbles don't overlap (see map-constants.ts)
-client.build(features, { minPoints: 2, radius: CLUSTER_RADIUS_PX, maxZoom: maxZoom });
+client.build(features, { minPoints: 2, radiusPx: CLUSTER_RADIUS_PX, maxZoom });
 // Vector tiles flow:
 // const featureCollection: FeatureCollection = { type: 'FeatureCollection', features };
 // client.buildVectorTiles(featureCollection);
