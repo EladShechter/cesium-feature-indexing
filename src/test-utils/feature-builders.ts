@@ -1,3 +1,4 @@
+import type Supercluster from "supercluster";
 import type { BBox } from "../global";
 
 type Pos = [number, number];
@@ -7,7 +8,7 @@ export function randomLocation(bbox: BBox): Pos {
     return [west + Math.random() * (east - west), south + Math.random() * (north - south)];
 }
 
-export function randomPoints(count: number, bbox: BBox): GeoJSON.Feature<GeoJSON.Point>[] {
+export function randomPoints(count: number, bbox: BBox): Supercluster.PointFeature<Supercluster.AnyProps>[] {
     return Array.from({ length: count }, () => ({
         type: "Feature" as const,
         id: crypto.randomUUID(),
