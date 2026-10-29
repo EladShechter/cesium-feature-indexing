@@ -36,6 +36,10 @@ export function toIndexItems(features: GeoJSON.Feature<GeoJSON.Geometry | null>[
             const kind = geometry.type === "Polygon" ? "polygon" : "line";
             const box = bbox(geometry) as BBox;
             const R = revealZoom(box, maxZoom);
+            if (!Number.isFinite(R)) {
+                skipped++;
+                return;
+            }
             shapes.push({ id: featureId, kind, coordinates: geometry.coordinates, bbox: box, revealZoom: R });
             if (R > 0) items.push(item(featureId, kind, anchorPoint(geometry), R));
         } else {

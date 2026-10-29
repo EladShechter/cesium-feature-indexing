@@ -43,11 +43,18 @@ export class EntityShapeDrawer implements ShapeDrawer {
                 },
             });
         }
-        this.viewer.scene.requestRender();
     }
 
     remove(id: string): void {
         this.dataSource.entities.removeById(ID_PREFIX + id);
+    }
+
+    beginBatch(): void {
+        this.dataSource.entities.suspendEvents();
+    }
+
+    endBatch(): void {
+        this.dataSource.entities.resumeEvents();
         this.viewer.scene.requestRender();
     }
 

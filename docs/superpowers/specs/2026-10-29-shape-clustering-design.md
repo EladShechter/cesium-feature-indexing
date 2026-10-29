@@ -113,8 +113,9 @@ never revealed). It is queried per tile with the tile's lon/lat bbox and filtere
   - **Polygons:** translucent fill (`SHAPE_POLYGON_FILL`) and a 1 px outline (`SHAPE_POLYGON_OUTLINE`), at height 0.
     Polygons are not clamped to ground (no terrain), so the outline works.
   - **Lines:** `PolylineGraphics`, width 2, `SHAPE_LINE_COLOR`.
-  - Cesium merges static entities with the same appearance into shared primitives. The reveal rule keeps the
-    number of drawn shapes bounded (every drawn shape is at least `REVEAL_SIZE_PX` on screen).
+  - Cesium merges static entities with the same appearance into shared primitives. The reveal rule bounds how
+    small a drawn shape is, not how many there are: the count depends on data density (the POC data is weighted
+    towards small shapes for that reason).
     If profiling shows a problem, moving to batched `Primitive`s is a change inside `ShapeLayer` only.
 - The entity id is `shape:<featureId>`, and `properties.featureId` is used for picking.
 

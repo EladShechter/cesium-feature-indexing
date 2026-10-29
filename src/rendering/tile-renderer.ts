@@ -1,11 +1,10 @@
 import { Billboard, BillboardCollection, Cartesian3, PointPrimitive, PointPrimitiveCollection, Viewer } from "cesium";
 import { IRenderer } from "./renderer.interface";
 import { BaseRenderer } from "./base-renderer";
-import type { BBox } from "../global";
+import type { BBox, TileShape } from "../global";
 import type { ClusterProperties } from 'supercluster';
 import { ClusterWorkerClient, TileResponse } from '../cluster-worker-client';
 import type { TileItem } from '../indexing/feature-index';
-import type { TileShape } from '../global';
 import { ShapeLayer } from './shape-layer';
 import { EntityShapeDrawer } from './entity-shape-drawer';
 

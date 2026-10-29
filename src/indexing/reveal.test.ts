@@ -16,20 +16,26 @@ describe("revealZoom", () => {
     it("revealZoom given a zero-size bbox returns maxZoom + 1", () => {
         // given
         const [lon, lat] = randomLocation([30, 30, 40, 40]);
-        // when / then
-        expect(revealZoom([lon, lat, lon, lat], 18)).toBe(19);
+        // when
+        const zoom = revealZoom([lon, lat, lon, lat], 18);
+        // then
+        expect(zoom).toBe(19);
     });
     it("revealZoom given a tiny shape clamps to maxZoom + 1", () => {
         // given
         const bbox: BBox = [35, 31, 35 + 1e-9, 31 + 1e-9];
-        // when / then
-        expect(revealZoom(bbox, 18)).toBe(19);
+        // when
+        const zoom = revealZoom(bbox, 18);
+        // then
+        expect(zoom).toBe(19);
     });
     it("revealZoom given a world-sized shape returns <= 0", () => {
         // given
         const bbox: BBox = [-180, -85, 180, 85];
-        // when / then
-        expect(revealZoom(bbox, 18)).toBeLessThanOrEqual(0);
+        // when
+        const zoom = revealZoom(bbox, 18);
+        // then
+        expect(zoom).toBeLessThanOrEqual(0);
     });
 });
 
@@ -63,7 +69,9 @@ describe("anchorPoint", () => {
         // given
         const vertex = randomLocation([30, 30, 40, 40]);
         const line: GeoJSON.LineString = { type: "LineString", coordinates: [vertex, vertex] };
-        // when / then
-        expect(anchorPoint(line)).toEqual(vertex);
+        // when
+        const anchor = anchorPoint(line);
+        // then
+        expect(anchor).toEqual(vertex);
     });
 });

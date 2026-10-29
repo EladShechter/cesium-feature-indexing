@@ -21,15 +21,19 @@ describe("FeatureIndex", () => {
         const index = new FeatureIndex(OPTIONS);
         index.load([...randomPoints(500, BBOX), polygon]);
         const R = revealZoom(bbox(polygon) as BBox, OPTIONS.maxZoom);
-        // when / then
+        // when
+        const seen: [number, boolean, boolean][] = [];
         for (let z = R - 3; z <= R + 1; z++) {
             const tiles = tilesCovering(BBOX, z).map(({ x, y }) => index.getTile(z, x, y));
             const asPoint = tiles.some(t => t.features.some(f => owned(f) && ("cluster" in f.tags
                 ? index.getLeaves(f.tags.cluster_id).some(l => l.properties.featureId === "poly-1")
                 : f.id === "poly-1")));
             const asShape = tiles.some(t => t.shapes.some(s => s.id === "poly-1"));
-            expect([z, asPoint, asShape]).toEqual([z, z < R, z >= R]);
+            seen.push([z, asPoint, asShape]);
         }
+        // then
+        const expected = seen.map(([z]) => [z, z < R, z >= R]);
+        expect(seen).toEqual(expected);
     });
 
     it("getTile given mixed data keeps counts and breakdowns consistent at every zoom", () => {
@@ -42,20 +46,28 @@ describe("FeatureIndex", () => {
         const R = new Map(shapes.map(s => [String(s.id), revealZoom(bbox(s) as BBox, OPTIONS.maxZoom)]));
         // shapes near the edge can have their anchor outside BBOX, so scan a padded area
         const padded: BBox = [BBOX[0] - 0.1, BBOX[1] - 0.1, BBOX[2] + 0.1, BBOX[3] + 0.1];
-        for (const z of [0, 4, 8, 12]) {
-            // when
+        const zooms = [0, 4, 8, 12];
+        // when
+        const results = zooms.map(z => {
             let total = 0;
+            const breakdownMismatches: number[] = [];
             for (const { x, y } of tilesCovering(padded, z)) {
                 for (const f of index.getTile(z, x, y).features.filter(owned)) {
                     if ("cluster" in f.tags) {
                         const { points: p, polygons, lines, point_count } = f.tags as any;
-                        expect(p + polygons + lines).toBe(point_count);
+                        if (p + polygons + lines !== point_count) breakdownMismatches.push(point_count);
                         total += point_count;
-                    } else total += 1;
+                    } else {
+                        total += 1;
+                    }
                 }
             }
-            // then
+            return { z, total, breakdownMismatches };
+        });
+        // then
+        for (const { z, total, breakdownMismatches } of results) {
             const unrevealed = [...R.values()].filter(r => r > z).length;
+            expect(breakdownMismatches).toEqual([]);
             expect(total).toBe(points.length + unrevealed);
         }
     });
@@ -68,12 +80,13 @@ describe("FeatureIndex", () => {
             { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [] } },
             { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[]] } },
             { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
+            { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[[NaN, NaN], [NaN, NaN], [NaN, NaN], [NaN, NaN]]] } },
         ] as GeoJSON.Feature<GeoJSON.Geometry | null>[];
         const index = new FeatureIndex(OPTIONS);
         // when
         index.load([...randomPoints(100, BBOX), ...bad]);
         // then
-        expect(index.skipped).toBe(5);
+        expect(index.skipped).toBe(6);
     });
 
     it("getTile given a zero-size shape returns it as a point above maxZoom", () => {

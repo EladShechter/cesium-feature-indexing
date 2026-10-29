@@ -15,13 +15,14 @@ export function setupPicking(
 
     const singleIds: string[] = [];
     const clusterIds: number[] = [];
-    const shapeIds: string[] = [];
+    // a polygon's fill and outline are separate instances of one entity, so drillPick can return it twice
+    const shapeIds = new Set<string>();
 
     for (const p of picks) {
       const meta: any = (p as any).id;
       if (!meta) continue;
       if (meta instanceof Entity) {
-        shapeIds.push(meta.properties!.featureId.getValue());
+        shapeIds.add(meta.properties!.featureId.getValue());
         continue;
       }
       if (meta.kind === "point" && meta.id) singleIds.push(meta.id);
@@ -33,8 +34,8 @@ export function setupPicking(
       console.log("Picked single points:", picked);
     }
 
-    if (shapeIds.length) {
-      console.log("Picked shapes:", shapeIds.map((id) => byId.get(id)));
+    if (shapeIds.size) {
+      console.log("Picked shapes:", [...shapeIds].map((id) => byId.get(id)));
     }
 
     for (const cluster_id of clusterIds) client.leaves(cluster_id);

@@ -1,11 +1,11 @@
 # Point clustering flow: status and known issues
 
-This is the **active** flow in `main.ts`: 100k random points, clustered by `supercluster` in the worker
+This is the **active** flow in `main.ts`: 60k random points, 30k polygons and 10k lines (sized buckets, weighted towards small shapes), clustered by `supercluster` in the worker
 and drawn per tile by `TileRenderer`. The disabled vector tiles flow is described in `vector-tiles-flow.md`.
 
 ## Flow
 
-1. `main.ts` builds random Point features and calls `client.build(features, { minPoints, radiusPx, maxZoom })`.
+1. `main.ts` builds 60k random Point features plus 30k polygons and 10k lines (sized buckets, weighted towards small shapes) and calls `client.build(features, { minPoints, radiusPx, maxZoom })`.
 2. `cluster-worker.ts` loads them into a `FeatureIndex` (see Shapes) and replies `built`.
 3. `CameraHandler` computes the visible bbox and a web-mercator zoom: the zoom at which a tile is at least
    `TILE_SIZE_PX` (256) on screen. It detects camera changes per frame (view matrix and canvas size, checked on
