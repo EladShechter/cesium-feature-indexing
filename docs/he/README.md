@@ -9,8 +9,10 @@
 |---|---|---|
 | 1 | [01-poc-baseline.md](01-poc-baseline.md) | מצב ה-POC **לפני** ה-branch `feature/shape-clustering`: איך מריצים, איך ה-clustering של נקודות עובד, ההחלטות הטכניות והבעיות הידועות |
 | 2 | [02-shape-clustering.md](02-shape-clustering.md) | מה ה-branch `feature/shape-clustering` הוסיף: polygons ו-polylines שמשתתפים ב-clustering, ה-index החדש, הבדיקות ומה צריך לדעת לפני production |
+| 3 | [03-performance-and-native-clustering.md](03-performance-and-native-clustering.md) | גבולות הביצועים (עם מדידות), והשוואה ל-`EntityCluster` המובנה של Cesium: למה בחרנו ב-index מראש, ומתי הפתרון המובנה מספיק |
+| 4 | [04-uncluster-feature-plan.md](04-uncluster-feature-plan.md) | תוכנית high level לפיצ'ר Uncluster / Cluster back מ-context menu, כולל הפערים הפתוחים ב-design |
 
-כדאי לקרוא לפי הסדר: מסמך 2 מניח שאתם מכירים את ה-flow שמתואר במסמך 1.
+כדאי לקרוא לפי הסדר: כל מסמך מניח שאתם מכירים את ה-flow שמתואר במסמכים שלפניו.
 
 ## מסמכים נוספים (באנגלית)
 
